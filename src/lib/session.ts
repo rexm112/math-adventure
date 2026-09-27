@@ -1,15 +1,27 @@
 import { ALL_TOPICS } from '../generators'
-import type { Difficulty, Grade, QuestionKind, Rng, SessionQuestion, TopicDef } from '../types'
+import type { Difficulty, DifficultyMode, Grade, QuestionKind, Rng, SessionQuestion, TopicDef } from '../types'
 import { makeRng } from './rng'
 
 export const SESSION_SIZE = 10
-/** 5 简单+中等 / 4 困难 / 1 拓展 */
-export const DIFF_PLAN: Difficulty[] = ['easy', 'easy', 'easy', 'medium', 'medium', 'hard', 'hard', 'hard', 'hard', 'challenge']
+
+/**
+ * 难度档位组卷方案（每局固定 10 题）：
+ * - 标准：3易+2中+4难+1拓展（默认，适合低年级/起步）
+ * - 进阶：1易+2中+5难+2拓展
+ * - 挑战：2中+5难+3拓展（哥哥模式）
+ */
+export const MODE_PLANS: Record<DifficultyMode, Difficulty[]> = {
+  standard: ['easy', 'easy', 'easy', 'medium', 'medium', 'hard', 'hard', 'hard', 'hard', 'challenge'],
+  advanced: ['easy', 'medium', 'medium', 'hard', 'hard', 'hard', 'hard', 'hard', 'challenge', 'challenge'],
+  challenge: ['medium', 'medium', 'hard', 'hard', 'hard', 'hard', 'hard', 'challenge', 'challenge', 'challenge'],
+}
 
 export interface BuildOptions {
   grade: Grade
   /** 指定专项 topicId；缺省为综合练习 */
   topicId?: string
+  /** 难度档位，默认标准 */
+  mode?: DifficultyMode
   seed?: number
 }
 
@@ -53,11 +65,8 @@ export function buildSession(opts: BuildOptions): SessionQuestion[] {
   const pool = poolFor(opts.grade, opts.topicId)
   if (!pool.length) throw new Error(`no topics for grade ${opts.grade}`)
 
-  // 简单/中等 5 题的构成：随机 3-4 道简单、其余中等，位置随机分布
-  const easyCount = rng.bool(0.6) ? 4 : 3
-  const headSlots = rng.shuffle([0, 1, 2, 3, 4]).slice(0, easyCount)
-  const plan: Difficulty[] = [0, 1, 2, 3, 4].map((i) => (headSlots.includes(i) ? 'easy' : 'medium'))
-  plan.push('hard', 'hard', 'hard', 'hard', 'challenge')
+  // 难度按档位出，题目顺序打乱（简单题不至于全挤在前面）
+  const plan = rng.shuffle(MODE_PLANS[opts.mode ?? 'standard'])
 
   const needWord = opts.grade >= 3 ? 2 : 1
   const wordTopics = pool.filter((t) => t.kind === 'word')

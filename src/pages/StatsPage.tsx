@@ -5,11 +5,12 @@ import type { Grade } from '../types'
 import { levelOf } from '../lib/scoring'
 import { Modal } from '../components/Bits'
 
-export default function StatsPage({ profileId, onBack, onDrill }: { profileId: string; onBack: () => void; onDrill: (grade: Grade, topicId: string) => void }) {
-  const { profiles, updateProfile, removeProfile, soundOn, toggleSound, resetAll } = useStore()
+export default function StatsPage({ profileId, onBack, onDrill, onReview }: { profileId: string; onBack: () => void; onDrill: (grade: Grade, topicId: string) => void; onReview: () => void }) {
+  const { profiles, updateProfile, removeProfile, soundOn, toggleSound, resetAll, clearWrongBook } = useStore()
   const p = profiles.find((x) => x.id === profileId)
   const [editing, setEditing] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmClearWrong, setConfirmClearWrong] = useState(false)
   const [name, setName] = useState(p?.name ?? '')
   const [avatar, setAvatar] = useState(p?.avatar ?? AVATARS[0])
   const [grade, setGrade] = useState<Grade>(p?.grade ?? 1)
@@ -18,6 +19,9 @@ export default function StatsPage({ profileId, onBack, onDrill }: { profileId: s
   const lv = levelOf(p.stats.totalPoints)
   const s = p.stats
   const days = s.dates.length
+  const wrongBook = p.wrongBook ?? []
+  const wrongOpen = wrongBook.filter((e) => !e.mastered)
+  const wrongDone = wrongBook.length - wrongOpen.length
 
   const topicRows = ALL_TOPICS.filter((t) => t.grade === p.grade && s.byTopic[t.id]?.total)
   const weak = topicRows.filter((t) => s.byTopic[t.id]!.first / s.byTopic[t.id]!.total < 0.6 && s.byTopic[t.id]!.total >= 3)
@@ -71,6 +75,36 @@ export default function StatsPage({ profileId, onBack, onDrill }: { profileId: s
           </button>
         </div>
       </div>
+
+      {wrongBook.length > 0 && (
+        <div className="card" style={{ marginTop: 14 }}>
+          <div className="row spread">
+            <h3 style={{ margin: 0 }}>📝 错题本</h3>
+            <span className="muted">
+              待攻克 {wrongOpen.length} · 已攻克 {wrongDone}
+            </span>
+          </div>
+          <p className="muted" style={{ margin: '8px 0' }}>
+            错题重练时，答对后还要<b>用语音讲出解题思路</b>，讲清楚了才算真正攻克。
+          </p>
+          <div className="row">
+            <button className="btn amber" style={{ flex: 2 }} disabled={wrongOpen.length === 0} onClick={onReview}>
+              🎤 开始错题重练
+            </button>
+            <button className="btn ghost" style={{ flex: 1 }} onClick={() => setConfirmClearWrong(true)} disabled={wrongBook.length === 0}>
+              清空
+            </button>
+          </div>
+          {wrongOpen.slice(0, 5).map((e, i) => (
+            <div className="recent-item" key={i}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>
+                ✗{e.wrongCount} {e.q.prompt}
+              </span>
+              <span className="muted">{e.q.topicName}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {weak.length > 0 && (
         <div className="card" style={{ marginTop: 14 }}>
@@ -156,6 +190,28 @@ export default function StatsPage({ profileId, onBack, onDrill }: { profileId: s
             </button>
             <button className="btn danger" style={{ flex: 1 }} onClick={() => { removeProfile(p.id); onBack() }}>
               删除
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {confirmClearWrong && (
+        <Modal onClose={() => setConfirmClearWrong(false)}>
+          <h3 style={{ marginTop: 0 }}>清空错题本？</h3>
+          <p className="muted">所有错题记录（包括未攻克的）都会删除。</p>
+          <div className="row">
+            <button className="btn ghost" style={{ flex: 1 }} onClick={() => setConfirmClearWrong(false)}>
+              取消
+            </button>
+            <button
+              className="btn danger"
+              style={{ flex: 1 }}
+              onClick={() => {
+                clearWrongBook(p.id)
+                setConfirmClearWrong(false)
+              }}
+            >
+              清空
             </button>
           </div>
         </Modal>

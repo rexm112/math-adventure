@@ -1,21 +1,34 @@
-import { useState } from 'react'
-import { AVATARS, useStore } from '../store'
+import { useEffect, useRef, useState } from 'react'
+import { AVATARS, useStore, type Profile } from '../store'
 import type { Grade } from '../types'
 import { levelOf } from '../lib/scoring'
 import { Modal } from '../components/Bits'
+import SettingsModal from '../components/SettingsModal'
 
 export default function HomePage({
   onPick,
   onStats,
+  onReview,
 }: {
   onPick: (profileId: string) => void
   onStats: (profileId: string) => void
+  onReview: (profileId: string) => void
 }) {
   const { profiles, addProfile } = useStore()
   const [adding, setAdding] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [name, setName] = useState('')
   const [avatar, setAvatar] = useState(AVATARS[0])
   const [grade, setGrade] = useState<Grade>(1)
+
+  // 配置过云同步时，打开首页先拉一次云端（家里两台设备互相同步）
+  const syncCfg = useStore((s) => s.syncCfg)
+  const syncNow = useStore((s) => s.syncNow)
+  useEffect(() => {
+    if (!syncCfg) return
+    void syncNow('pull').catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const create = () => {
     const n = name.trim() || '小勇士'
@@ -24,9 +37,19 @@ export default function HomePage({
     setName('')
   }
 
+  const wrongCount = (p: Profile) => (p.wrongBook ?? []).filter((e) => !e.mastered).length
+
   return (
     <div>
       <div className="home-hero">
+        <button
+          className="btn ghost"
+          style={{ position: 'absolute', right: 14, top: 14, padding: '8px 12px', fontSize: '0.95rem' }}
+          onClick={() => setSettingsOpen(true)}
+          aria-label="设置"
+        >
+          ⚙️
+        </button>
         <span className="mascot">🧭</span>
         <h1>数学大冒险</h1>
         <p>人教版 · 小学数学 · 边想边学，永不放弃</p>
@@ -35,21 +58,21 @@ export default function HomePage({
       <div className="profile-grid">
         {profiles.map((p) => {
           const lv = levelOf(p.stats.totalPoints)
+          const wrong = wrongCount(p)
           return (
-            <div key={p.id} style={{ display: 'contents' }}>
-              <button className="profile-card" onClick={() => onPick(p.id)}>
-                <span className="avatar">{p.avatar}</span>
-                <span className="meta">
-                  <span className="name">{p.name}</span>
-                  <div className="sub">
-                    {lv.emoji} Lv{lv.level} {lv.title} · {p.grade}年级
-                  </div>
-                  <div className="sub">
-                    🏅 {p.stats.totalPoints} 分 · ⭐×{p.stats.stars3} · 徽章 {p.badges.length}
-                  </div>
-                </span>
-              </button>
-            </div>
+            <button key={p.id} className="profile-card" onClick={() => onPick(p.id)}>
+              <span className="avatar">{p.avatar}</span>
+              <span className="meta">
+                <span className="name">{p.name}</span>
+                <div className="sub">
+                  {lv.emoji} Lv{lv.level} {lv.title} · {p.grade}年级
+                  {p.difficultyMode === 'advanced' ? ' · 进阶' : p.difficultyMode === 'challenge' ? ' · 挑战' : ''}
+                </div>
+                <div className="sub">
+                  🏅 {p.stats.totalPoints} 分 · ⭐×{p.stats.stars3} · 📝 错题 {wrong}
+                </div>
+              </span>
+            </button>
           )
         })}
         <button className="profile-add" onClick={() => setAdding(true)}>
@@ -58,7 +81,7 @@ export default function HomePage({
       </div>
 
       <p className="muted" style={{ textAlign: 'center', marginTop: 26 }}>
-        每局 10 题：🌱简单 + 🍀中等 5 题 · 🔥困难 4 题 · 🚀拓展 1 题
+        每局 10 题，难度可调（标准 / 进阶 / 挑战）
         <br />
         答错不着急，猫头鹰老师 🦉 会一步步提示，答案永远由你自己算出来！
       </p>
@@ -66,8 +89,14 @@ export default function HomePage({
       {profiles.length > 0 && (
         <div className="row" style={{ justifyContent: 'center', marginTop: 12 }}>
           {profiles.map((p) => (
-            <button key={p.id} className="btn ghost" style={{ fontSize: '0.9rem', padding: '8px 16px' }} onClick={() => onStats(p.id)}>
-              🏆 {p.name} 的成就
+            <button
+              key={p.id}
+              className="btn ghost"
+              style={{ fontSize: '0.9rem', padding: '8px 16px' }}
+              onClick={() => (wrongCount(p) > 0 ? onReview(p.id) : onStats(p.id))}
+              title={wrongCount(p) > 0 ? '错题重练' : '暂无错题'}
+            >
+              {wrongCount(p) > 0 ? `📝 ${p.name} 错题重练(${wrongCount(p)})` : `🏆 ${p.name} 的成就`}
             </button>
           ))}
         </div>
@@ -110,6 +139,8 @@ export default function HomePage({
           </div>
         </Modal>
       )}
+
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }

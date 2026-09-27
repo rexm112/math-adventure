@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { topicsOfGrade } from '../generators'
-import type { Grade } from '../types'
+import type { DifficultyMode, Grade } from '../types'
+
+const MODES: { id: DifficultyMode; name: string; emoji: string; desc: string }[] = [
+  { id: 'standard', name: '标准', emoji: '🌱', desc: '3易+2中+4难+1拓展，适合起步和低年级' },
+  { id: 'advanced', name: '进阶', emoji: '🔥', desc: '1易+2中+5难+2拓展，练熟后提速' },
+  { id: 'challenge', name: '挑战', emoji: '🚀', desc: '2中+5难+3拓展，给觉得太简单的小朋友' },
+]
 
 export default function SetupPage({
   profileId,
@@ -13,8 +19,10 @@ export default function SetupPage({
   onBack: () => void
 }) {
   const profile = useStore((s) => s.profiles.find((p) => p.id === profileId))
+  const updateProfile = useStore((s) => s.updateProfile)
   const [grade, setGrade] = useState<Grade>(profile?.grade ?? 1)
   const [topicId, setTopicId] = useState<string | undefined>(undefined)
+  const mode: DifficultyMode = profile?.difficultyMode ?? 'standard'
 
   const topics = useMemo(() => topicsOfGrade(grade), [grade])
   const t1 = topics.filter((t) => t.term !== 2)
@@ -49,6 +57,25 @@ export default function SetupPage({
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 14 }}>
+        <h3 style={{ margin: '0 0 4px' }}>🎚 难度档位（{profile?.name} 的默认档位）</h3>
+        <p className="muted" style={{ margin: '0 0 12px' }}>切换会记住，只影响这位小勇士的组卷。</p>
+        <div className="topic-chips" style={{ gap: 8 }}>
+          {MODES.map((m) => (
+            <button
+              key={m.id}
+              className={mode === m.id ? 'on' : ''}
+              onClick={() => updateProfile(profileId, { difficultyMode: m.id })}
+              type="button"
+              style={{ fontSize: '1rem', padding: '10px 16px' }}
+            >
+              {m.emoji} {m.name}
+            </button>
+          ))}
+        </div>
+        <p className="muted" style={{ margin: '10px 0 0' }}>{MODES.find((m) => m.id === mode)?.desc}</p>
       </div>
 
       <div className="card" style={{ marginTop: 14 }}>

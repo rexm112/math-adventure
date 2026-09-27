@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Grade, QuestionResult, SessionSummary } from './types'
+import type { DifficultyMode, Grade, Question, QuestionResult, SessionSummary, WrongEntry } from './types'
+import { createSyncGist, mergeProfiles, pullSync, pushSync } from './lib/sync'
 
 export interface ProfileStats {
   totalPoints: number
@@ -23,9 +24,30 @@ export interface Profile {
   name: string
   avatar: string
   grade: Grade
+  /** 组卷难度档位（旧数据缺省为 standard） */
+  difficultyMode?: DifficultyMode
   createdAt: number
+  /** 数据更新时间，云同步按它合并 */
+  updatedAt?: number
   badges: string[]
   stats: ProfileStats
+  /** 错题本（旧数据缺省为空） */
+  wrongBook?: WrongEntry[]
+}
+
+export interface AppSettings {
+  /** 家长配置的 AI（OpenAI 兼容，默认智谱），用于讲解分析 */
+  aiKey?: string
+  aiBase?: string
+  aiModel?: string
+  /** 自动朗读反馈 */
+  tts?: boolean
+}
+
+export interface SyncCfg {
+  token: string
+  gistId: string
+  lastSync: number
 }
 
 export const AVATARS = ['🐰', '🦁', '🐼', '🦊', '🐨', '🐯', '🐸', '🦄', '🐧', '🐤']
@@ -34,16 +56,31 @@ function emptyStats(): ProfileStats {
   return { totalPoints: 0, totalQuestions: 0, firstTryCorrect: 0, challengeFirstTry: 0, stars3: 0, sessions: 0, streakBest: 0, dates: [], byTopic: {}, recent: [] }
 }
 
+function normalizeProfile(p: Profile): Profile {
+  return { ...p, difficultyMode: p.difficultyMode ?? 'standard', updatedAt: p.updatedAt ?? p.createdAt, wrongBook: p.wrongBook ?? [] }
+}
+
 interface AppState {
   profiles: Profile[]
   activeId: string | null
   soundOn: boolean
+  settings: AppSettings
+  syncCfg: SyncCfg | null
   addProfile: (name: string, avatar: string, grade: Grade) => Profile
-  updateProfile: (id: string, patch: Partial<Pick<Profile, 'name' | 'avatar' | 'grade'>>) => void
+  updateProfile: (id: string, patch: Partial<Pick<Profile, 'name' | 'avatar' | 'grade' | 'difficultyMode'>>) => void
   removeProfile: (id: string) => void
   setActive: (id: string | null) => void
   toggleSound: () => void
-  finishSession: (profileId: string, summary: Omit<SessionSummary, 'earnedBadges'>) => string[]
+  setSettings: (patch: AppSettings) => void
+  finishSession: (profileId: string, summary: Omit<SessionSummary, 'earnedBadges'>, wrongQuestions: Question[]) => string[]
+  markExplained: (profileId: string, promptKey: string, pass: boolean) => void
+  clearWrongBook: (profileId: string) => void
+  /** 从导出文件恢复/合并数据 */
+  importProfiles: (profiles: Profile[]) => void
+  // 云同步
+  setSyncCfg: (cfg: SyncCfg | null) => void
+  setupSync: (token: string) => Promise<string>
+  syncNow: (dir: 'push' | 'pull') => Promise<string>
   resetAll: () => void
 }
 
@@ -58,7 +95,7 @@ export const BADGES: { id: string; name: string; emoji: string; desc: string }[]
   { id: 'q500', name: '五百勇士', emoji: '🎖️', desc: '累计完成 500 题' },
   { id: 'star50', name: '星光闪耀', emoji: '⭐', desc: '累计获得 50 个三星' },
   { id: 'week7', name: '坚持之星', emoji: '📅', desc: '累计 7 天完成练习' },
-  { id: 'rich', name: '小富翁', emoji: '💰', desc: '累计获得 1000 分' },
+  { id: 'rich', name: '小富翁', emoji: '💰', desc: '累计获得 2000 分' },
 ]
 
 function checkBadges(p: Profile, s: ProfileStats, summary: Omit<SessionSummary, 'earnedBadges'>): string[] {
@@ -76,8 +113,13 @@ function checkBadges(p: Profile, s: ProfileStats, summary: Omit<SessionSummary, 
   if (s.totalQuestions >= 500) add('q500')
   if (s.stars3 >= 50) add('star50')
   if (s.dates.length >= 7) add('week7')
-  if (s.totalPoints >= 1000) add('rich')
+  if (s.totalPoints >= 2000) add('rich')
   return earned
+}
+
+function bump(updated: number): number {
+  const now = Date.now()
+  return now > updated ? now : updated + 1
 }
 
 export const useStore = create<AppState>()(
@@ -86,20 +128,32 @@ export const useStore = create<AppState>()(
       profiles: [],
       activeId: null,
       soundOn: true,
+      settings: {},
+      syncCfg: null,
+
       addProfile: (name, avatar, grade) => {
-        const p: Profile = { id: `p${Date.now()}`, name, avatar, grade, createdAt: Date.now(), badges: [], stats: emptyStats() }
+        const p: Profile = { id: `p${Date.now()}`, name, avatar, grade, difficultyMode: 'standard', createdAt: Date.now(), updatedAt: Date.now(), badges: [], stats: emptyStats(), wrongBook: [] }
         set({ profiles: [...get().profiles, p] })
+        void maybeAutoPush(get, set)
         return p
       },
-      updateProfile: (id, patch) =>
-        set({ profiles: get().profiles.map((p) => (p.id === id ? { ...p, ...patch } : p)) }),
+
+      updateProfile: (id, patch) => {
+        set({ profiles: get().profiles.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: bump(p.updatedAt ?? p.createdAt) } : p)) })
+        void maybeAutoPush(get, set)
+      },
+
       removeProfile: (id) => {
         const rest = get().profiles.filter((p) => p.id !== id)
         set({ profiles: rest, activeId: get().activeId === id ? null : get().activeId })
+        void maybeAutoPush(get, set)
       },
+
       setActive: (id) => set({ activeId: id }),
       toggleSound: () => set({ soundOn: !get().soundOn }),
-      finishSession: (profileId, summary) => {
+      setSettings: (patch) => set({ settings: { ...get().settings, ...patch } }),
+
+      finishSession: (profileId, summary, wrongQuestions) => {
         const prev = get().profiles
         const beforeBadges = prev.find((x) => x.id === profileId)?.badges ?? []
         const profiles = prev.map((p) => {
@@ -127,15 +181,115 @@ export const useStore = create<AppState>()(
             t.total += 1
             if (r.wrongAttempts === 0 && !r.skipped) t.first += 1
           }
+          // 错题入本：同题（按题干）只累计次数；答对并讲清思路才算攻克
+          const wrongBook = [...(p.wrongBook ?? [])]
+          for (const wq of wrongQuestions) {
+            const hit = wrongBook.find((e) => e.q.prompt === wq.prompt)
+            if (hit) {
+              hit.wrongCount += 1
+              hit.lastWrongAt = Date.now()
+              hit.mastered = false
+              hit.q = wq
+            } else {
+              wrongBook.push({ q: wq, wrongCount: 1, lastWrongAt: Date.now(), mastered: false, explainAttempts: 0 })
+            }
+          }
+          // 错题本最多留 60 条：优先清掉已攻克的最旧条目
+          while (wrongBook.length > 60) {
+            const idx = wrongBook.findIndex((e) => e.mastered)
+            if (idx >= 0) wrongBook.splice(idx, 1)
+            else wrongBook.shift()
+          }
           const earned = checkBadges(p, s, summary)
-          return { ...p, stats: s, badges: [...p.badges, ...earned] }
+          return { ...p, stats: s, wrongBook, badges: [...p.badges, ...earned], updatedAt: bump(p.updatedAt ?? p.createdAt) }
         })
         set({ profiles })
+        void maybeAutoPush(get, set)
         const afterBadges = profiles.find((x) => x.id === profileId)?.badges ?? []
         return afterBadges.filter((b) => !beforeBadges.includes(b))
       },
+
+      markExplained: (profileId, promptKey, pass) => {
+        set({
+          profiles: get().profiles.map((p) => {
+            if (p.id !== profileId) return p
+            const wrongBook = (p.wrongBook ?? []).map((e) => {
+              if (e.q.prompt !== promptKey) return e
+              return { ...e, explainAttempts: e.explainAttempts + 1, mastered: pass ? true : e.mastered }
+            })
+            return { ...p, wrongBook, updatedAt: bump(p.updatedAt ?? p.createdAt) }
+          }),
+        })
+        void maybeAutoPush(get, set)
+      },
+
+      clearWrongBook: (profileId) => {
+        set({ profiles: get().profiles.map((p) => (p.id === profileId ? { ...p, wrongBook: [], updatedAt: bump(p.updatedAt ?? p.createdAt) } : p)) })
+      },
+
+      importProfiles: (incoming) => {
+        const merged = mergeProfiles(get().profiles, incoming.map((x) => normalizeProfile(x)))
+        set({ profiles: merged })
+        void maybeAutoPush(get, set)
+      },
+
+      // ---------- 云同步 ----------
+      setSyncCfg: (cfg) => set({ syncCfg: cfg }),
+
+      setupSync: async (token) => {
+        const gistId = await createSyncGist(token, get().profiles)
+        set({ syncCfg: { token, gistId, lastSync: Date.now() } })
+        return gistId
+      },
+
+      syncNow: async (dir) => {
+        const cfg = get().syncCfg
+        if (!cfg) throw new Error('请先在设置里配置云同步')
+        if (dir === 'push') {
+          await pushSync(cfg.token, cfg.gistId, get().profiles)
+          set({ syncCfg: { ...cfg, lastSync: Date.now() } })
+          return '已上传云端 ✓'
+        }
+        const remote = await pullSync(cfg.token, cfg.gistId)
+        const merged = mergeProfiles(get().profiles, remote.profiles ?? [])
+        set({ profiles: merged, syncCfg: { ...cfg, lastSync: Date.now() } })
+        return `已从云端合并 ✓（共 ${merged.length} 位小勇士）`
+      },
+
       resetAll: () => set({ profiles: [], activeId: null }),
     }),
-    { name: 'math-adventure-v1' },
+    {
+      name: 'math-adventure-v1',
+      // 旧版本数据兼容：补齐新增字段
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AppState>
+        return {
+          ...current,
+          ...p,
+          profiles: (p.profiles ?? []).map((x) => normalizeProfile(x as Profile)),
+        }
+      },
+    },
   ),
 )
+
+/** 配置过同步时，数据变化后自动上传（失败静默，下次再试） */
+async function maybeAutoPush(get: () => AppState, set: (partial: Partial<AppState>) => void) {
+  const cfg = get().syncCfg
+  if (!cfg) return
+  try {
+    await pushSync(cfg.token, cfg.gistId, get().profiles)
+    set({ syncCfg: { ...cfg, lastSync: Date.now() } })
+  } catch {
+    /* 网络不佳时跳过，等下一次数据变化或手动同步 */
+  }
+}
+
+/** 挑选错题重练题目：未攻克优先，错得多的优先，最多 10 题 */
+export function pickReviewQuestions(profile: Profile, limit = 10): Question[] {
+  const entries = [...(profile.wrongBook ?? [])]
+    .filter((e) => !e.mastered)
+    .sort((a, b) => b.wrongCount - a.wrongCount || b.lastWrongAt - a.lastWrongAt)
+    .slice(0, limit)
+  return entries.map((e) => e.q)
+}

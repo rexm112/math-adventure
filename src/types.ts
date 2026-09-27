@@ -4,6 +4,20 @@ export type Grade = 1 | 2 | 3 | 4 | 5 | 6
 
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'challenge'
 
+/** 组卷难度档位：标准（5易中+4难+1拓展）/ 进阶 / 挑战 */
+export type DifficultyMode = 'standard' | 'advanced' | 'challenge'
+
+/** 错题本条目（题目整体可序列化存储，用于错题重练） */
+export interface WrongEntry {
+  q: Question
+  wrongCount: number
+  lastWrongAt: number
+  /** 已答对并讲清思路 */
+  mastered: boolean
+  /** 讲解尝试次数 */
+  explainAttempts: number
+}
+
 export type QuestionKind = 'calc' | 'concept' | 'word'
 
 export type AnswerType = 'number' | 'choice' | 'fraction' | 'compare' | 'ratio'

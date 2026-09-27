@@ -15,6 +15,7 @@ export default function ResultPage({
   summary,
   earnedBadges,
   profileAvatar,
+  reviewMode = false,
   onAgain,
   onSetup,
   onHome,
@@ -23,6 +24,7 @@ export default function ResultPage({
   summary: SessionSummary
   earnedBadges: string[]
   profileAvatar: string
+  reviewMode?: boolean
   onAgain: () => void
   onSetup: () => void
   onHome: () => void
@@ -31,7 +33,10 @@ export default function ResultPage({
   const acc = accuracyOf(summary.results)
   const mins = Math.floor(summary.seconds / 60)
   const secs = summary.seconds % 60
-  const weak = Object.values(
+  const explained = summary.results.filter((r) => !r.skipped).length
+  const weak = reviewMode
+    ? []
+    : Object.values(
     summary.results.reduce<Record<string, { topicId: string; topicName: string; first: number; total: number }>>((m, r) => {
       const t = (m[r.topicId] ??= { topicId: r.topicId, topicName: r.topicName, first: 0, total: 0 })
       t.total++
@@ -46,8 +51,8 @@ export default function ResultPage({
     <div>
       {acc >= 80 && <Confetti count={50} />}
       <div className="result-hero">
-        <div className="emoji">{profileAvatar}</div>
-        <h2 style={{ margin: '6px 0 2px' }}>本局完成！</h2>
+        <div className="emoji">{reviewMode ? '📝' : profileAvatar}</div>
+        <h2 style={{ margin: '6px 0 2px' }}>{reviewMode ? '错题重练完成！' : '本局完成！'}</h2>
         <p style={{ margin: 0, color: 'var(--muted)' }}>{praise(acc)}</p>
       </div>
 
@@ -64,7 +69,7 @@ export default function ResultPage({
           <div className="v">
             {acc}% · {mins}:{String(secs).padStart(2, '0')}
           </div>
-          <div className="k">一次答对率 · 用时</div>
+          <div className="k">{reviewMode ? `讲思路 ${explained} 题 · 用时` : '一次答对率 · 用时'}</div>
         </div>
       </div>
 
@@ -127,7 +132,7 @@ export default function ResultPage({
 
       <div style={{ marginTop: 18 }}>
         <button className="btn big green" onClick={onAgain}>
-          🔄 再来一局
+          {reviewMode ? '🔄 再练一轮错题' : '🔄 再来一局'}
         </button>
         <div className="row" style={{ marginTop: 10 }}>
           <button className="btn ghost" style={{ flex: 1 }} onClick={onSetup}>

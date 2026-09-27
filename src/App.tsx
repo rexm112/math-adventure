@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { Grade, SessionSummary } from './types'
-import { useStore } from './store'
+import type { DifficultyMode, Grade, Question, SessionSummary } from './types'
+import { pickReviewQuestions, useStore } from './store'
 import HomePage from './pages/HomePage'
 import SetupPage from './pages/SetupPage'
 import QuizPage from './pages/QuizPage'
@@ -10,9 +10,21 @@ import StatsPage from './pages/StatsPage'
 type View =
   | { name: 'home' }
   | { name: 'setup'; profileId: string }
-  | { name: 'quiz'; profileId: string; grade: Grade; topicId?: string }
-  | { name: 'result'; profileId: string; summary: SessionSummary; earnedBadges: string[] }
+  | { name: 'quiz'; profileId: string; grade: Grade; topicId?: string; mode?: DifficultyMode; review?: Question[] }
+  | { name: 'result'; profileId: string; summary: SessionSummary; earnedBadges: string[]; reviewMode: boolean }
   | { name: 'stats'; profileId: string }
+
+function modeOf(profileId: string): DifficultyMode {
+  return useStore.getState().profiles.find((p) => p.id === profileId)?.difficultyMode ?? 'standard'
+}
+
+function startReview(profileId: string): View | null {
+  const p = useStore.getState().profiles.find((x) => x.id === profileId)
+  if (!p) return null
+  const qs = pickReviewQuestions(p)
+  if (!qs.length) return null
+  return { name: 'quiz', profileId, grade: p.grade, review: qs }
+}
 
 export default function App() {
   const [view, setView] = useState<View>({ name: 'home' })
@@ -21,7 +33,11 @@ export default function App() {
   if (view.name === 'home') {
     return (
       <Shell>
-        <HomePage onPick={(profileId) => setView({ name: 'setup', profileId })} onStats={(profileId) => setView({ name: 'stats', profileId })} />
+        <HomePage
+          onPick={(profileId) => setView({ name: 'setup', profileId })}
+          onStats={(profileId) => setView({ name: 'stats', profileId })}
+          onReview={(profileId) => setView((v) => startReview(profileId) ?? v)}
+        />
       </Shell>
     )
   }
@@ -32,7 +48,9 @@ export default function App() {
         <SetupPage
           profileId={view.profileId}
           onBack={() => setView({ name: 'home' })}
-          onStart={(grade, topicId) => setView({ name: 'quiz', profileId: view.profileId, grade, topicId })}
+          onStart={(grade, topicId) =>
+            setView({ name: 'quiz', profileId: view.profileId, grade, topicId, mode: modeOf(view.profileId) })
+          }
         />
       </Shell>
     )
@@ -44,13 +62,16 @@ export default function App() {
         profileId={view.profileId}
         grade={view.grade}
         topicId={view.topicId}
+        mode={view.mode}
+        review={view.review}
         onExit={() => setView({ name: 'home' })}
-        onFinish={(partial) => {
-          const earned = finishSession(view.profileId, partial)
+        onFinish={(partial, wrongQuestions) => {
+          const earned = finishSession(view.profileId, partial, wrongQuestions)
           setView({
             name: 'result',
             profileId: view.profileId,
             earnedBadges: earned,
+            reviewMode: view.review !== undefined,
             summary: { ...partial, earnedBadges: earned },
           })
         }}
@@ -60,16 +81,29 @@ export default function App() {
 
   if (view.name === 'result') {
     const avatar = useStore.getState().profiles.find((p) => p.id === view.profileId)?.avatar ?? '🧭'
+    const isReview = view.reviewMode
     return (
       <Shell>
         <ResultPage
           summary={view.summary}
           earnedBadges={view.earnedBadges}
           profileAvatar={avatar}
-          onAgain={() => setView({ name: 'quiz', profileId: view.profileId, grade: view.summary.grade, topicId: view.summary.topicId === 'all' ? undefined : view.summary.topicId })}
+          reviewMode={isReview}
+          onAgain={() =>
+            setView((v) => {
+              if (isReview) return startReview(view.profileId) ?? { name: 'home' }
+              return {
+                name: 'quiz',
+                profileId: view.profileId,
+                grade: view.summary.grade,
+                topicId: view.summary.topicId === 'all' || view.summary.topicId === 'review' ? undefined : view.summary.topicId,
+                mode: modeOf(view.profileId),
+              }
+            })
+          }
           onSetup={() => setView({ name: 'setup', profileId: view.profileId })}
           onHome={() => setView({ name: 'home' })}
-          onDrill={(grade, topicId) => setView({ name: 'quiz', profileId: view.profileId, grade, topicId })}
+          onDrill={(grade, topicId) => setView({ name: 'quiz', profileId: view.profileId, grade, topicId, mode: modeOf(view.profileId) })}
         />
       </Shell>
     )
@@ -81,7 +115,8 @@ export default function App() {
       <StatsPage
         profileId={view.profileId}
         onBack={() => setView({ name: 'home' })}
-        onDrill={(grade, topicId) => setView({ name: 'quiz', profileId: view.profileId, grade, topicId })}
+        onDrill={(grade, topicId) => setView({ name: 'quiz', profileId: view.profileId, grade, topicId, mode: modeOf(view.profileId) })}
+        onReview={() => setView((v) => startReview(view.profileId) ?? v)}
       />
     </Shell>
   )
@@ -92,7 +127,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="app">
       <main style={{ flex: 1 }}>{children}</main>
       <footer className="muted" style={{ textAlign: 'center', padding: '18px 0 4px', fontSize: '0.75rem' }}>
-        数学大冒险 · 人教版小学数学 · 深圳自用
+        数学大冒险 · 人教版小学数学 · 家庭自用
       </footer>
     </div>
   )

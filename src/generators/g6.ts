@@ -689,6 +689,83 @@ function genPattern(d: Difficulty, rng: Rng) {
   })
 }
 
+// ---------- 综合应用（相遇 / 工程 / 利润） ----------
+function genCombo(d: Difficulty, rng: Rng) {
+  if (d === 'medium') {
+    // 相遇问题：路程 = 速度和 × 时间
+    const a = rng.int(45, 70)
+    const b = rng.int(40, 65)
+    const t = rng.int(3, 6)
+    return makeQ({ ...M, name: '综合应用', kind: 'word' }, d, {
+      prompt: `甲、乙两车同时从两地相向开出，甲车每小时行 ${a} 千米，乙车每小时行 ${b} 千米，经过 ${t} 小时两车相遇。两地相距多少千米？`,
+      figure: { kind: 'barModel', bars: [{ label: `甲 ${t}小时`, value: a * t }, { label: `乙 ${t}小时`, value: b * t }] },
+      answer: (a + b) * t,
+      unit: '千米',
+      concept: '相遇问题：路程 = 速度和 × 时间',
+      hints: solveHints({
+        concept: '相遇问题：两队（车）同时相向而行',
+        knowns: [`甲每小时 ${a} 千米`, `乙每小时 ${b} 千米`, `${t} 小时相遇`],
+        ask: '两地相距多少千米',
+        method: '两车 1 小时共靠近 (甲速 + 乙速) 千米，相遇时共同走完全程：路程 = 速度和 × 时间。',
+        setup: `第一步：${a} + ${b} = ？第二步：× ${t}。`,
+      }),
+    })
+  }
+  if (d === 'hard') {
+    // 工程问题：合作天数 = ab/(a+b)
+    const pairs: [number, number, number][] = [
+      [6, 3, 2],
+      [12, 4, 3],
+      [4, 12, 3],
+      [20, 5, 4],
+      [5, 20, 4],
+      [12, 6, 4],
+      [10, 15, 6],
+      [15, 10, 6],
+      [30, 6, 5],
+      [12, 12, 6],
+    ]
+    const [a, b, days] = rng.pick(pairs)
+    return makeQ({ ...M, name: '综合应用', kind: 'word' }, d, {
+      prompt: `一项工程，甲队单独做要 ${a} 天完成，乙队单独做要 ${b} 天完成。两队合作，多少天可以完成？`,
+      answer: days,
+      unit: '天',
+      concept: '工程问题：把总量看作单位"1"',
+      hints: solveHints({
+        concept: '工程问题：工作总量 = 工作效率 × 时间',
+        knowns: [`甲单独做 ${a} 天`, `乙单独做 ${b} 天`],
+        ask: '合作多少天完成',
+        method: `把整项工程看作 "1"：甲每天做 1/${a}，乙每天做 1/${b}，合作每天做两个分数之和。`,
+        setup: `第一步：1/${a} + 1/${b} = ？（合作一天的）第二步：1 ÷ 这个分数。`,
+        first: `通分算出两人一天合做几分之几，再用总量 1 除以它`,
+      }),
+    })
+  }
+  // challenge：定价折扣利润三步题（数字搭配保证整数）
+  const tuples: [number, number, number, number][] = [
+    [100, 50, 8, 20],
+    [80, 25, 9, 10],
+    [60, 50, 8, 12],
+    [200, 20, 9, 16],
+    [150, 60, 8, 42],
+  ]
+  const [cost, pct, zhe, profit] = rng.pick(tuples)
+  return makeQ({ ...M, name: '综合应用', kind: 'word' }, d, {
+    prompt: `一件商品进价 ${cost} 元，按 ${pct}% 的利润定价出售，后来又打${zhe === 8 ? '八' : '九'}折促销。卖出一件事，商家还能赚多少元？`,
+    answer: profit,
+    unit: '元',
+    concept: '定价 = 进价 × (1 + 利润率)，售价 = 定价 × 折扣',
+    hints: solveHints({
+      concept: '百分数的三步应用',
+      knowns: [`进价 ${cost} 元`, `按 ${pct}% 利润定价`, `按${zhe === 8 ? '八' : '九'}折卖出`],
+      ask: '还能赚多少元',
+      method: `分三步：① 定价 = 进价 × (1 + ${pct}%)；② 售价 = 定价 × ${zhe === 8 ? '八' : '九'}折；③ 利润 = 售价 - 进价。`,
+      setup: `第一步：${cost} × (1 + ${pct}%) = ？（定价）`,
+      first: `第二步：定价 × ${zhe === 8 ? '80%' : '90%'} 是售价，最后再减进价 ${cost}`,
+    }),
+  })
+}
+
 export const G6_TOPICS: TopicDef[] = [
   { id: 'g6-fracmult', grade: 6, name: '分数乘法', kind: 'word', difficulties: ['easy', 'medium', 'hard', 'challenge'], term: 1, gen: genFracMult },
   { id: 'g6-fracdiv', grade: 6, name: '分数除法', kind: 'word', difficulties: ['easy', 'medium', 'hard', 'challenge'], term: 1, gen: genFracDiv },
@@ -700,4 +777,5 @@ export const G6_TOPICS: TopicDef[] = [
   { id: 'g6-solid', grade: 6, name: '圆柱与圆锥', kind: 'word', difficulties: ['hard', 'challenge'], term: 2, gen: genSolid },
   { id: 'g6-neg', grade: 6, name: '负数', kind: 'concept', difficulties: ['easy', 'medium'], term: 2, gen: genNeg },
   { id: 'g6-pattern', grade: 6, name: '数学广角·数与形', kind: 'concept', difficulties: ['hard', 'challenge'], term: 2, gen: genPattern },
+  { id: 'g6-combo', grade: 6, name: '综合应用（相遇·工程·利润）', kind: 'word', difficulties: ['medium', 'hard', 'challenge'], term: 2, gen: genCombo },
 ]
