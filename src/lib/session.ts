@@ -35,7 +35,14 @@ function poolFor(grade: Grade, topicId?: string): TopicDef[] {
   return pool
 }
 
-function pickGen(pool: TopicDef[], diff: Difficulty, kind: QuestionKind | null, excludeIds: string[], rng: Rng): TopicDef | null {
+function pickGen(
+  pool: TopicDef[],
+  diff: Difficulty,
+  kind: QuestionKind | null,
+  excludeIds: string[],
+  rng: Rng,
+  usage: Map<string, number>,
+): TopicDef | null {
   const hasDiff = (t: TopicDef) => t.difficulties.includes(diff)
   const byKind = (list: TopicDef[]) => (kind ? list.filter((t) => t.kind === kind) : list)
   // 优先级：难度+题型 > 题型（就近难度）> 难度（不限题型）> 任意
@@ -44,8 +51,11 @@ function pickGen(pool: TopicDef[], diff: Difficulty, kind: QuestionKind | null, 
   if (!cands.length) cands = pool.filter(hasDiff)
   if (!cands.length) cands = pool
   const fresh = cands.filter((t) => !excludeIds.includes(t.id))
-  if (fresh.length) return rng.pick(fresh)
-  return rng.pick(cands)
+  if (fresh.length) cands = fresh
+  // 同候选中优先选本局出现次数最少的主题，避免同款题刷屏
+  const minUsed = Math.min(...cands.map((t) => usage.get(t.id) ?? 0))
+  const least = cands.filter((t) => (usage.get(t.id) ?? 0) === minUsed)
+  return rng.pick(least)
 }
 
 const ORDER: Difficulty[] = ['easy', 'medium', 'hard', 'challenge']
@@ -91,6 +101,7 @@ export function buildSession(opts: BuildOptions): SessionQuestion[] {
 
   const questions: SessionQuestion[] = []
   const prompts = new Set<string>()
+  const usage = new Map<string, number>()
   let lastTopic = ''
   for (let i = 0; i < SESSION_SIZE; i++) {
     const diff = plan[i]
@@ -98,7 +109,7 @@ export function buildSession(opts: BuildOptions): SessionQuestion[] {
     let q: import('../types').Question | null = null
     for (let tries = 0; tries < 24 && !q; tries++) {
       const exclude = tries < 8 ? [lastTopic] : []
-      const gen = pickGen(pool, diff, wantWord ? 'word' : null, exclude, rng)
+      const gen = pickGen(pool, diff, wantWord ? 'word' : null, exclude, rng, usage)
       if (!gen) break
       let cand: import('../types').Question | null = null
       for (let k = 0; k < 8; k++) {
@@ -116,11 +127,12 @@ export function buildSession(opts: BuildOptions): SessionQuestion[] {
     }
     if (!q) {
       // 极端回退：任意可用生成器 + 就近难度
-      const gen = pickGen(pool, diff, null, [], rng) ?? pool[0]
+      const gen = pickGen(pool, diff, null, [], rng, usage) ?? pool[0]
       const fallbackDiff = gen.difficulties.includes(diff) ? diff : nearestDiff(gen.difficulties, diff)
       q = gen.gen(fallbackDiff, rng)
       lastTopic = gen.id
     }
+    usage.set(lastTopic, (usage.get(lastTopic) ?? 0) + 1)
     // 主题信息（id/名称/题型）以注册表为准
     const topic = pool.find((t) => t.id === lastTopic)
     q.topicId = topic?.id ?? pool[0].id

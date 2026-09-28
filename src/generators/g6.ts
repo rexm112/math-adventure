@@ -265,23 +265,44 @@ function genRatio(d: Difficulty, rng: Rng) {
       }),
     })
   }
-  // challenge：比值
-  const pairs: [number, number, number, number][] = [
-    [3, 4, 1, 8],
-    [2, 3, 1, 6],
-    [5, 6, 5, 12],
-    [3, 8, 3, 4],
-  ]
-  const [a1, b1, a2, b2] = rng.pick(pairs)
-  return makeQ({ ...M, name: '比', kind: 'calc' }, d, {
-    prompt: `求比值：${a1}/${b1} : ${a2}/${b2}（比值是一个数，填小数或整数）`,
-    answer: (a1 * b2) / (b1 * a2),
-    concept: '分数比的比值',
-    hints: [
-      '比值 = 前项 ÷ 后项。',
-      `除以 ${a2}/${b2} 等于乘 ${b2}/${a2}：${a1}/${b1} × ${b2}/${a2}。`,
-      '算出这个分数的值，就是比值。',
-    ],
+  // challenge：分数比的比值 / 三个量的连比分配
+  if (rng.bool()) {
+    const pairs: [number, number, number, number][] = [
+      [3, 4, 1, 8],
+      [2, 3, 1, 6],
+      [5, 6, 5, 12],
+      [3, 8, 3, 4],
+    ]
+    const [a1, b1, a2, b2] = rng.pick(pairs)
+    return makeQ({ ...M, name: '比', kind: 'calc' }, d, {
+      prompt: `求比值：${a1}/${b1} : ${a2}/${b2}（比值是一个数，填小数或整数）`,
+      answer: (a1 * b2) / (b1 * a2),
+      concept: '分数比的比值',
+      hints: [
+        '比值 = 前项 ÷ 后项。',
+        `除以 ${a2}/${b2} 等于乘 ${b2}/${a2}：${a1}/${b1} × ${b2}/${a2}。`,
+        '算出这个分数的值，就是比值。',
+      ],
+    })
+  }
+  const a = rng.int(1, 3)
+  const b = a + rng.int(1, 2)
+  const c = b + rng.int(1, 3)
+  const per = rng.pick([10, 15, 20, 25, 30])
+  const total = per * (a + b + c)
+  return makeQ({ ...M, name: '比', kind: 'word' }, d, {
+    prompt: `学校把 ${total} 本图书按 ${a} : ${b} : ${c} 分给三、四、五三个年级，五年级分到多少本？`,
+    answer: per * c,
+    unit: '本',
+    concept: '三个量的按比分配',
+    hints: solveHints({
+      concept: '连比分配：先求总份数，再求一份',
+      knowns: [`共 ${total} 本`, `三、四、五年级的比是 ${a} : ${b} : ${c}`],
+      ask: '五年级分到多少本',
+      method: `总份数 = ${a} + ${b} + ${c}，先求出 1 份是多少本，五年级占 ${c} 份。`,
+      setup: `第一步：${a} + ${b} + ${c} = ？第二步：${total} ÷ 总份数 = 每份的本数，再 × ${c}。`,
+      first: `总份数是 ${a + b + c}，先算 ${total} ÷ ${a + b + c}`,
+    }),
   })
 }
 
@@ -338,22 +359,78 @@ function genCircle(d: Difficulty, rng: Rng) {
       }),
     })
   }
-  // challenge：半圆周长
-  const rr2 = rng.pick([2, 3, 4, 5])
-  const halfCircle = PI * rr2
-  const ans = Math.round((halfCircle + 2 * rr2) * 100) / 100
-  return makeQ({ ...M, name: '圆', kind: 'word' }, d, {
-    prompt: `一个半圆的半径是 ${rr2} 厘米，它的周长是多少厘米？（π 取 3.14，半圆周长 = 圆周长的一半 + 直径）`,
-    figure: { kind: 'circleFig', labels: { r: `${rr2}` } },
-    answer: ans,
-    unit: '厘米',
-    concept: '半圆的周长',
+  // challenge：半圆周长 / 圆环面积 / 扇形面积
+  const kind = rng.pick(['semicircle', 'ring', 'ring', 'sector'] as const)
+  if (kind === 'semicircle') {
+    const rr2 = rng.pick([2, 3, 4, 5])
+    const halfCircle = PI * rr2
+    const ans = Math.round((halfCircle + 2 * rr2) * 100) / 100
+    return makeQ({ ...M, name: '圆', kind: 'word' }, d, {
+      prompt: `一个半圆的半径是 ${rr2} 厘米，它的周长是多少厘米？（π 取 3.14，半圆周长 = 圆周长的一半 + 直径）`,
+      figure: { kind: 'circleFig', labels: { r: `${rr2}` } },
+      answer: ans,
+      unit: '厘米',
+      concept: '半圆的周长',
+      hints: solveHints({
+        concept: '半圆周长 = πr + 2r',
+        knowns: [`半径 ${rr2} 厘米`],
+        ask: '半圆的周长',
+        method: '半圆的周长包括：圆周长的一半 + 一条直径。',
+        setup: `第一步：圆周长的一半 3.14 × ${rr2} = ？第二步：加上直径 ${rr2 * 2}。`,
+      }),
+    })
+  }
+  if (kind === 'ring') {
+    // 圆环面积 = π(R² − r²)，数字搭配保证结果只有两位小数
+    const pairs: [number, number][] = [
+      [6, 4],
+      [8, 5],
+      [10, 6],
+      [5, 3],
+      [12, 8],
+      [7, 3],
+    ]
+    const [R, r2] = rng.pick(pairs)
+    const ans = Math.round(PI * (R * R - r2 * r2) * 100) / 100
+    return makeQ({ ...M, name: '圆', kind: 'calc' }, d, {
+      prompt: `一个圆环，外圆半径 ${R} 厘米，内圆半径 ${r2} 厘米，圆环的面积是多少平方厘米？（π 取 3.14）`,
+      figure: { kind: 'circleFig', labels: { r: `${R}` } },
+      answer: ans,
+      unit: '平方厘米',
+      concept: '圆环面积 S = π(R² − r²)',
+      hints: solveHints({
+        concept: '圆环面积 = 外圆面积 − 内圆面积',
+        knowns: [`外圆半径 ${R} 厘米`, `内圆半径 ${r2} 厘米`],
+        ask: '圆环的面积',
+        method: '先分别算出两个圆的面积再相减；更聪明的做法是先算 R² − r²，再乘 π。',
+        setup: `第一步：${R}² − ${r2}² = ${R * R} − ${r2 * r2} = ？第二步：× 3.14。`,
+        first: `平方差算出来是 ${R * R - r2 * r2}，再乘 3.14`,
+      }),
+    })
+  }
+  const secPairs: [number, number][] = [
+    [6, 120],
+    [4, 90],
+    [3, 60],
+    [6, 60],
+    [4, 45],
+    [6, 90],
+  ]
+  const [r3, deg] = rng.pick(secPairs)
+  const secAns = Math.round(((PI * r3 * r3 * deg) / 360) * 100) / 100
+  return makeQ({ ...M, name: '圆', kind: 'calc' }, d, {
+    prompt: `一个扇形的半径是 ${r3} 厘米，圆心角是 ${deg}°，它的面积是多少平方厘米？（π 取 3.14，扇形面积 = 圆面积 × n/360）`,
+    figure: { kind: 'fracPie', parts: 360 / deg },
+    answer: secAns,
+    unit: '平方厘米',
+    concept: '扇形面积 = πr² × n/360',
     hints: solveHints({
-      concept: '半圆周长 = πr + 2r',
-      knowns: [`半径 ${rr2} 厘米`],
-      ask: '半圆的周长',
-      method: '半圆的周长包括：圆周长的一半 + 一条直径。',
-      setup: `第一步：圆周长的一半 3.14 × ${rr2} = ？第二步：加上直径 ${rr2 * 2}。`,
+      concept: '扇形是圆的一部分，占比 = 圆心角 ÷ 360',
+      knowns: [`半径 ${r3} 厘米`, `圆心角 ${deg}°`],
+      ask: '扇形面积',
+      method: `先算整个圆的面积，再乘 ${deg}/360（扇形占圆的几分之几）。`,
+      setup: `第一步：3.14 × ${r3} × ${r3} = ？第二步：× ${deg}/360（也就是 ÷ ${360 / deg}）。`,
+      first: `整圆面积是 ${Math.round(PI * r3 * r3 * 100) / 100}，看 ${deg}° 占 360° 的几分之几`,
     }),
   })
 }
@@ -597,21 +674,70 @@ function genSolid(d: Difficulty, rng: Rng) {
       }),
     })
   }
-  // challenge：圆锥
-  const rr3 = rng.pick([3, 6])
-  const hh3 = rng.pick([5, 6, 9])
-  return makeQ({ ...M, name: '圆柱与圆锥', kind: 'calc' }, d, {
-    prompt: `圆锥的底面半径是 ${rr3} 厘米，高是 ${hh3} 厘米，体积是多少立方厘米？（π 取 3.14）`,
-    figure: { kind: 'cone', labels: { r: `${rr3}`, h: `${hh3}` } },
-    answer: Math.round(((PI * rr3 * rr3 * hh3) / 3) * 100) / 100,
-    unit: '立方厘米',
-    concept: '圆锥体积 = 圆柱体积 × 1/3',
+  // challenge：圆锥 / 削去最大圆锥 / 熔铸变形
+  const kind = rng.pick(['cone', 'cut', 'cast'] as const)
+  if (kind === 'cone') {
+    const rr3 = rng.pick([3, 6])
+    const hh3 = rng.pick([5, 6, 9])
+    return makeQ({ ...M, name: '圆柱与圆锥', kind: 'calc' }, d, {
+      prompt: `圆锥的底面半径是 ${rr3} 厘米，高是 ${hh3} 厘米，体积是多少立方厘米？（π 取 3.14）`,
+      figure: { kind: 'cone', labels: { r: `${rr3}`, h: `${hh3}` } },
+      answer: Math.round(((PI * rr3 * rr3 * hh3) / 3) * 100) / 100,
+      unit: '立方厘米',
+      concept: '圆锥体积 = 圆柱体积 × 1/3',
+      hints: solveHints({
+        concept: '圆锥体积 = 底面积 × 高 ÷ 3',
+        knowns: [`半径 ${rr3} 厘米`, `高 ${hh3} 厘米`],
+        ask: '体积',
+        method: '等底等高的圆锥体积是圆柱的 1/3：V = πr²h ÷ 3。',
+        setup: `第一步：底面积 3.14 × ${rr3} × ${rr3} = ？第二步：× ${hh3} 再 ÷ 3。`,
+      }),
+    })
+  }
+  if (kind === 'cut') {
+    // 圆柱内削去最大的圆锥，求剩下体积：V柱 − V锥 = (2/3)πr²h
+    const tuples: [number, number][] = [
+      [3, 6],
+      [6, 5],
+      [3, 9],
+      [6, 9],
+      [2, 6],
+      [4, 3],
+    ]
+    const [r, h] = rng.pick(tuples)
+    const full = PI * r * r * h
+    const left = Math.round(((full * 2) / 3) * 100) / 100
+    return makeQ({ ...M, name: '圆柱与圆锥', kind: 'word' }, d, {
+      prompt: `一个底面半径 ${r} 厘米、高 ${h} 厘米的圆柱形木块，把它削成一个最大的圆锥后，剩下的木料体积是多少立方厘米？（π 取 3.14）`,
+      figure: { kind: 'cylinder', labels: { r: `${r}`, h: `${h}` } },
+      answer: left,
+      unit: '立方厘米',
+      concept: '等底等高：圆锥是圆柱的 1/3',
+      hints: solveHints({
+        concept: '最大的圆锥和圆柱等底等高',
+        knowns: [`圆柱半径 ${r} 厘米`, `圆柱高 ${h} 厘米`],
+        ask: '削去最大圆锥后剩下多少',
+        method: '最大的圆锥与圆柱等底等高，体积是圆柱的 1/3，所以剩下的是圆柱的 2/3。',
+        setup: `第一步：圆柱体积 3.14 × ${r} × ${r} × ${h} = ？第二步：× 2/3。`,
+        first: `圆柱体积是 ${Math.round(full * 100) / 100}，再乘 2/3`,
+      }),
+    })
+  }
+  // 熔铸：圆柱形铁块熔铸成等底面圆锥，高变成几倍
+  const hh = rng.pick([6, 9, 12])
+  return makeQ({ ...M, name: '圆柱与圆锥', kind: 'word' }, d, {
+    prompt: `一块高 ${hh} 厘米的圆柱形铁块（底面半径 4 厘米），把它熔铸成一个底面半径也是 4 厘米的圆锥形零件（不计损耗），圆锥的高是多少厘米？`,
+    figure: { kind: 'cone', labels: { r: '4' } },
+    answer: hh * 3,
+    unit: '厘米',
+    concept: '体积守恒：等底的圆锥高是圆柱的 3 倍',
     hints: solveHints({
-      concept: '圆锥体积 = 底面积 × 高 ÷ 3',
-      knowns: [`半径 ${rr3} 厘米`, `高 ${hh3} 厘米`],
-      ask: '体积',
-      method: '等底等高的圆锥体积是圆柱的 1/3：V = πr²h ÷ 3。',
-      setup: `第一步：底面积 3.14 × ${rr3} × ${rr3} = ？第二步：× ${hh3} 再 ÷ 3。`,
+      concept: '熔铸前后体积不变',
+      knowns: [`圆柱高 ${hh} 厘米`, `圆柱和圆锥底面半径都是 4 厘米`],
+      ask: '圆锥的高',
+      method: '体积相同、底面积相同时，圆锥的高必须是圆柱的 3 倍（因为圆锥体积要 ÷3）。',
+      setup: `想一想：V柱 = 底面积 × ${hh}，V锥 = 底面积 × 高 ÷ 3。让它们相等，锥的高 = ？`,
+      first: '列出 底面积 × ' + hh + ' = 底面积 × 高 ÷ 3，两边同时约去底面积',
     }),
   })
 }
@@ -672,19 +798,33 @@ function genPattern(d: Difficulty, rng: Rng) {
       ],
     })
   }
-  // challenge：鸽巢原理
-  const items = rng.int(4, 9)
-  const boxes = rng.int(2, Math.min(4, items - 1))
-  const atLeast = Math.ceil(items / boxes)
-  return makeQ({ ...M, name: '数学广角', kind: 'concept' }, 'challenge', {
-    prompt: `把 ${items} 支铅笔放进 ${boxes} 个笔筒里，总有一个笔筒里至少放了几支铅笔？`,
-    answer: atLeast,
-    unit: '支',
-    concept: '鸽巢原理（抽屉原理）',
+  // challenge：鸽巢原理 / 连续偶数之和
+  if (rng.bool()) {
+    const items = rng.int(4, 9)
+    const boxes = rng.int(2, Math.min(4, items - 1))
+    const atLeast = Math.ceil(items / boxes)
+    return makeQ({ ...M, name: '数学广角', kind: 'concept' }, d, {
+      prompt: `把 ${items} 支铅笔放进 ${boxes} 个笔筒里，总有一个笔筒里至少放了几支铅笔？`,
+      answer: atLeast,
+      unit: '支',
+      concept: '鸽巢原理（抽屉原理）',
+      hints: [
+        '先想"平均分"：把铅笔尽量平均放进每个笔筒。',
+        `假设每个笔筒先放 ${Math.floor(items / boxes)} 支，还剩 ${items % boxes} 支。`,
+        `剩下的每支无论放进哪个笔筒，都会让那个笔筒变成 ${Math.floor(items / boxes) + 1} 支。所以"至少"就是平均数再加（有余数时加 1）。算一算是几？`,
+      ],
+    })
+  }
+  const n = rng.int(4, 9)
+  const evens = Array.from({ length: n }, (_, i) => 2 * i + 2)
+  return makeQ({ ...M, name: '数学广角', kind: 'calc' }, d, {
+    prompt: `找规律巧算：${evens.join(' + ')} = ？（从 2 开始加 ${n} 个连续偶数）`,
+    answer: n * (n + 1),
+    concept: '连续偶数之和 = n×(n+1)',
     hints: [
-      '先想"平均分"：把铅笔尽量平均放进每个笔筒。',
-      `假设每个笔筒先放 ${Math.floor(items / boxes)} 支，还剩 ${items % boxes} 支。`,
-      `剩下的每支无论放进哪个笔筒，都会让那个笔筒变成 ${Math.floor(items / boxes) + 1} 支。所以"至少"就是平均数再加（有余数时加 1）。算一算是几？`,
+      '数与形的思路：每个偶数都能拆成两个相同数，2=1+1，4=2+2，6=3+3……',
+      `拆开后正好是两个 (${1}+${2}+…+${n}) 相加。先算 1 加到 ${n}：头尾配对，每对和是 ${n + 1}。`,
+      `1 + 2 + … + ${n} = (${n + 1}) × ${n} ÷ 2，再乘 2（两组）就是答案。算一算！`,
     ],
   })
 }
@@ -712,57 +852,405 @@ function genCombo(d: Difficulty, rng: Rng) {
     })
   }
   if (d === 'hard') {
-    // 工程问题：合作天数 = ab/(a+b)
-    const pairs: [number, number, number][] = [
-      [6, 3, 2],
-      [12, 4, 3],
-      [4, 12, 3],
-      [20, 5, 4],
-      [5, 20, 4],
-      [12, 6, 4],
-      [10, 15, 6],
-      [15, 10, 6],
-      [30, 6, 5],
-      [12, 12, 6],
+    const type = rng.pick(['work', 'fee', 'fee'] as const)
+    if (type === 'work') {
+      // 工程问题：合作天数 = ab/(a+b)
+      const pairs: [number, number, number][] = [
+        [6, 3, 2],
+        [12, 4, 3],
+        [4, 12, 3],
+        [20, 5, 4],
+        [5, 20, 4],
+        [12, 6, 4],
+        [10, 15, 6],
+        [15, 10, 6],
+        [30, 6, 5],
+        [12, 12, 6],
+      ]
+      const [a, b, days] = rng.pick(pairs)
+      return makeQ({ ...M, name: '综合应用', kind: 'word' }, d, {
+        prompt: `一项工程，甲队单独做要 ${a} 天完成，乙队单独做要 ${b} 天完成。两队合作，多少天可以完成？`,
+        answer: days,
+        unit: '天',
+        concept: '工程问题：把总量看作单位"1"',
+        hints: solveHints({
+          concept: '工程问题：工作总量 = 工作效率 × 时间',
+          knowns: [`甲单独做 ${a} 天`, `乙单独做 ${b} 天`],
+          ask: '合作多少天完成',
+          method: `把整项工程看作 "1"：甲每天做 1/${a}，乙每天做 1/${b}，合作每天做两个分数之和。`,
+          setup: `第一步：1/${a} + 1/${b} = ？（合作一天的）第二步：1 ÷ 这个分数。`,
+          first: `通分算出两人一天合做几分之几，再用总量 1 除以它`,
+        }),
+      })
+    }
+    // 分段计费：出租车 / 水费（数字搭配保证整数）
+    if (rng.bool()) {
+      const tuples: [number, number, number, number][] = [
+        [8, 3, 2, 9],
+        [8, 3, 2, 11],
+        [8, 3, 3, 7],
+        [10, 3, 2, 10],
+        [10, 3, 2, 13],
+        [9, 2, 3, 6],
+        [9, 2, 3, 8],
+        [12, 3, 2, 8],
+      ]
+      const [base, freeKm, perKm, dist] = rng.pick(tuples)
+      const fee = base + (dist - freeKm) * perKm
+      return makeQ({ ...M, name: '综合应用', kind: 'word' }, d, {
+        prompt: `出租车收费标准：${freeKm} 千米以内（含 ${freeKm} 千米）起步价 ${base} 元，超过部分每千米 ${perKm} 元。王老师乘出租车行了 ${dist} 千米，应付车费多少元？`,
+        figure: { kind: 'barModel', bars: [{ label: `前${freeKm}千米`, value: base }, { label: `超出${dist - freeKm}千米`, value: (dist - freeKm) * perKm, color: '#94A3B8' }, { label: '合计', q: true }] },
+        answer: fee,
+        unit: '元',
+        concept: '分段计费：起步价 + 超出部分',
+        hints: solveHints({
+          concept: '分段计费：两段分开算，再加起来',
+          knowns: [`起步价 ${base} 元含 ${freeKm} 千米`, `超出部分每千米 ${perKm} 元`, `共行了 ${dist} 千米`],
+          ask: '应付车费多少元',
+          method: `前 ${freeKm} 千米付起步价 ${base} 元；超出的 (${dist} − ${freeKm}) 千米按每千米 ${perKm} 元另算。`,
+          setup: `第一步：${dist} − ${freeKm} = 超出的千米数。第二步：起步价 ${base} + 超出千米数 × ${perKm}。`,
+          first: `超出了 ${dist - freeKm} 千米，这段的费用是 ${dist - freeKm} × ${perKm}`,
+        }),
+      })
+    }
+    const tuples2: [number, number, number, number][] = [
+      [12, 3, 5, 16],
+      [12, 3, 5, 18],
+      [10, 2, 4, 15],
+      [10, 2, 4, 17],
+      [15, 2, 4, 20],
+      [15, 2, 4, 22],
+      [8, 4, 6, 10],
+      [8, 4, 6, 11],
     ]
-    const [a, b, days] = rng.pick(pairs)
+    const [limit, p1, p2, used] = rng.pick(tuples2)
+    const fee2 = limit * p1 + (used - limit) * p2
     return makeQ({ ...M, name: '综合应用', kind: 'word' }, d, {
-      prompt: `一项工程，甲队单独做要 ${a} 天完成，乙队单独做要 ${b} 天完成。两队合作，多少天可以完成？`,
-      answer: days,
-      unit: '天',
-      concept: '工程问题：把总量看作单位"1"',
+      prompt: `某市水费阶梯收费：每月用水不超过 ${limit} 吨时每吨 ${p1} 元，超过 ${limit} 吨的部分每吨 ${p2} 元。小明家上月用水 ${used} 吨，应付水费多少元？`,
+      answer: fee2,
+      unit: '元',
+      concept: '阶梯计费：两段单价不同',
       hints: solveHints({
-        concept: '工程问题：工作总量 = 工作效率 × 时间',
-        knowns: [`甲单独做 ${a} 天`, `乙单独做 ${b} 天`],
-        ask: '合作多少天完成',
-        method: `把整项工程看作 "1"：甲每天做 1/${a}，乙每天做 1/${b}，合作每天做两个分数之和。`,
-        setup: `第一步：1/${a} + 1/${b} = ？（合作一天的）第二步：1 ÷ 这个分数。`,
-        first: `通分算出两人一天合做几分之几，再用总量 1 除以它`,
+        concept: '阶梯计费：标准内一段价，超出部分另一段价',
+        knowns: [`${limit} 吨以内每吨 ${p1} 元`, `超过部分每吨 ${p2} 元`, `用水 ${used} 吨`],
+        ask: '应付水费多少元',
+        method: `前 ${limit} 吨按每吨 ${p1} 元算；超出的 (${used} − ${limit}) 吨按每吨 ${p2} 元算，最后相加。`,
+        setup: `第一步：${limit} × ${p1} = 标准内的水费。第二步：(${used} − ${limit}) × ${p2}，两段相加。`,
+        first: `标准内的水费是 ${limit * p1} 元，再算超出部分`,
       }),
     })
   }
-  // challenge：定价折扣利润三步题（数字搭配保证整数）
-  const tuples: [number, number, number, number][] = [
-    [100, 50, 8, 20],
-    [80, 25, 9, 10],
-    [60, 50, 8, 12],
-    [200, 20, 9, 16],
-    [150, 60, 8, 42],
+  // challenge：定价折扣利润三步题 / 浓度问题
+  if (rng.bool()) {
+    const tuples: [number, number, number, number][] = [
+      [100, 50, 8, 20],
+      [80, 25, 9, 10],
+      [60, 50, 8, 12],
+      [200, 20, 9, 16],
+      [150, 60, 8, 42],
+    ]
+    const [cost, pct, zhe, profit] = rng.pick(tuples)
+    return makeQ({ ...M, name: '综合应用', kind: 'word' }, d, {
+      prompt: `一件商品进价 ${cost} 元，按 ${pct}% 的利润定价出售，后来又打${zhe === 8 ? '八' : '九'}折促销。卖出一件事，商家还能赚多少元？`,
+      answer: profit,
+      unit: '元',
+      concept: '定价 = 进价 × (1 + 利润率)，售价 = 定价 × 折扣',
+      hints: solveHints({
+        concept: '百分数的三步应用',
+        knowns: [`进价 ${cost} 元`, `按 ${pct}% 利润定价`, `按${zhe === 8 ? '八' : '九'}折卖出`],
+        ask: '还能赚多少元',
+        method: `分三步：① 定价 = 进价 × (1 + ${pct}%)；② 售价 = 定价 × ${zhe === 8 ? '八' : '九'}折；③ 利润 = 售价 - 进价。`,
+        setup: `第一步：${cost} × (1 + ${pct}%) = ？（定价）`,
+        first: `第二步：定价 × ${zhe === 8 ? '80%' : '90%'} 是售价，最后再减进价 ${cost}`,
+      }),
+    })
+  }
+  // 浓度问题：加水稀释（盐的重量不变）
+  const tuples3: [number, number, number, number][] = [
+    [200, 20, 10, 200],
+    [300, 15, 10, 150],
+    [250, 20, 10, 250],
+    [600, 15, 10, 300],
+    [400, 20, 16, 100],
+    [500, 25, 20, 125],
+    [300, 20, 15, 100],
+    [450, 20, 18, 50],
   ]
-  const [cost, pct, zhe, profit] = rng.pick(tuples)
+  const [gw, c1, c2, addW] = rng.pick(tuples3)
   return makeQ({ ...M, name: '综合应用', kind: 'word' }, d, {
-    prompt: `一件商品进价 ${cost} 元，按 ${pct}% 的利润定价出售，后来又打${zhe === 8 ? '八' : '九'}折促销。卖出一件事，商家还能赚多少元？`,
-    answer: profit,
-    unit: '元',
-    concept: '定价 = 进价 × (1 + 利润率)，售价 = 定价 × 折扣',
+    prompt: `有 ${gw} 克浓度为 ${c1}% 的盐水，要把它稀释成浓度 ${c2}% 的盐水，需要加入多少克水？`,
+    answer: addW,
+    unit: '克',
+    concept: '浓度问题：加水前后盐不变',
     hints: solveHints({
-      concept: '百分数的三步应用',
-      knowns: [`进价 ${cost} 元`, `按 ${pct}% 利润定价`, `按${zhe === 8 ? '八' : '九'}折卖出`],
-      ask: '还能赚多少元',
-      method: `分三步：① 定价 = 进价 × (1 + ${pct}%)；② 售价 = 定价 × ${zhe === 8 ? '八' : '九'}折；③ 利润 = 售价 - 进价。`,
-      setup: `第一步：${cost} × (1 + ${pct}%) = ？（定价）`,
-      first: `第二步：定价 × ${zhe === 8 ? '80%' : '90%'} 是售价，最后再减进价 ${cost}`,
+      concept: '抓住不变量：加水不会改变盐的重量',
+      knowns: [`${gw} 克浓度为 ${c1}% 的盐水`, `目标浓度 ${c2}%`],
+      ask: '需要加多少克水',
+      method: `先算出盐的重量：${gw} × ${c1}%。加水后盐不变，浓度变成 ${c2}%，就能反推出新盐水的总重量。`,
+      setup: `第一步：${gw} × ${c1}% = 盐的克数。第二步：盐 ÷ ${c2}% = 新盐水总重，再减去原来的 ${gw} 克。`,
+      first: `盐有 ${(gw * c1) / 100} 克，用它 ÷ ${c2}% 算出稀释后的总重量`,
     }),
+  })
+}
+
+// ---------- 行程问题（追及 · 火车过桥 · 环形跑道） ----------
+function genJourney(d: Difficulty, rng: Rng) {
+  if (d === 'hard') {
+    const type = rng.pick(['chase', 'chase', 'train'] as const)
+    if (type === 'chase') {
+      // 追及问题：相距 d，速度差追上
+      const tuples: [number, number, number, number][] = [
+        [65, 50, 60, 4],
+        [72, 64, 32, 4],
+        [80, 65, 45, 3],
+        [55, 40, 90, 6],
+        [70, 58, 36, 3],
+        [45, 35, 40, 4],
+        [60, 48, 24, 2],
+        [90, 75, 120, 8],
+      ]
+      const [v1, v2, gap, t] = rng.pick(tuples)
+      return makeQ({ ...M, name: '行程问题', kind: 'word' }, d, {
+        prompt: `甲、乙两人相距 ${gap} 千米，两人同时同向出发（甲在后面），甲每小时行 ${v1} 千米，乙每小时行 ${v2} 千米。经过几小时甲追上乙？`,
+        answer: t,
+        unit: '小时',
+        concept: '追及问题：追及时间 = 路程差 ÷ 速度差',
+        hints: solveHints({
+          concept: '追及问题：速度快的人在后面追',
+          knowns: [`相距 ${gap} 千米`, `甲每小时 ${v1} 千米`, `乙每小时 ${v2} 千米`],
+          ask: '几小时追上',
+          method: `每小时甲比乙多行 (${v1} − ${v2}) 千米，多行的路程正好用来缩小 ${gap} 千米的差距。`,
+          setup: `第一步：${v1} − ${v2} = 速度差。第二步：${gap} ÷ 速度差 = 追及时间。`,
+          first: `每小时追近 ${v1 - v2} 千米，看 ${gap} 里有几个这么多`,
+        }),
+      })
+    }
+    // 火车过桥：路程 = 桥长 + 车长
+    const tuples2: [number, number, number, number][] = [
+      [20, 300, 200, 25],
+      [25, 600, 200, 32],
+      [20, 450, 150, 30],
+      [10, 800, 200, 100],
+      [30, 500, 250, 25],
+      [15, 420, 180, 40],
+      [20, 260, 140, 20],
+    ]
+    const [v, bridge, train, t] = rng.pick(tuples2)
+    return makeQ({ ...M, name: '行程问题', kind: 'word' }, d, {
+      prompt: `一列长 ${train} 米的火车，以每秒 ${v} 米的速度通过一座长 ${bridge} 米的大桥，从车头上桥到车尾离桥，一共需要多少秒？`,
+      answer: t,
+      unit: '秒',
+      concept: '火车过桥：总路程 = 桥长 + 车长',
+      hints: solveHints({
+        concept: '火车过桥的路程包括桥和车身',
+        knowns: [`车长 ${train} 米`, `桥长 ${bridge} 米`, `速度每秒 ${v} 米`],
+        ask: '需要多少秒',
+        method: '从车头上桥到车尾离桥，火车实际走的路程 = 桥长 + 车长（画线段图一眼就明白）。',
+        setup: `第一步：${bridge} + ${train} = 总路程。第二步：总路程 ÷ ${v} = 时间。`,
+        first: `总路程是 ${bridge + train} 米，再 ÷ ${v}`,
+      }),
+    })
+  }
+  // challenge：环形跑道（反向相遇 / 同向追上）
+  if (rng.bool()) {
+    const tuples: [number, number, number, number][] = [
+      [400, 6, 4, 40],
+      [360, 8, 7, 24],
+      [480, 9, 7, 30],
+      [300, 8, 7, 20],
+      [540, 10, 8, 30],
+      [420, 9, 5, 30],
+    ]
+    const [C, a, b, t] = rng.pick(tuples)
+    return makeQ({ ...M, name: '行程问题', kind: 'word' }, d, {
+      prompt: `环形跑道周长 ${C} 米，甲、乙两人同时从同一地点反向出发，甲每分钟跑 ${a} 米，乙每分钟跑 ${b} 米。出发后多少分钟两人第一次相遇？`,
+      answer: t,
+      unit: '分钟',
+      concept: '环形反向：合走一圈就相遇',
+      hints: solveHints({
+        concept: '反向出发：两人一起"凑"完一圈周长',
+        knowns: [`周长 ${C} 米`, `甲每分钟 ${a} 米`, `乙每分钟 ${b} 米`],
+        ask: '多少分钟第一次相遇',
+        method: '反向而行，两人每分钟一共跑 (甲速 + 乙速) 米，合起来正好等于一圈周长时相遇。',
+        setup: `第一步：${a} + ${b} = 两人每分钟合跑的米数。第二步：${C} ÷ 这个和 = 相遇时间。`,
+        first: `每分钟合跑 ${a + b} 米，${C} 米里包含几个`,
+      }),
+    })
+  }
+  const tuples3: [number, number, number, number][] = [
+    [180, 7, 4, 60],
+    [150, 8, 3, 30],
+    [200, 7, 3, 50],
+    [120, 5, 3, 60],
+    [240, 9, 5, 60],
+    [300, 8, 6, 150],
+  ]
+  const [C2, a2, b2, t2] = rng.pick(tuples3)
+  return makeQ({ ...M, name: '行程问题', kind: 'word' }, d, {
+    prompt: `环形跑道周长 ${C2} 米，甲、乙两人同时从同一地点同向出发，甲每分钟跑 ${a2} 米，乙每分钟跑 ${b2} 米（甲比乙快）。出发后多少分钟甲第一次追上乙？`,
+    answer: t2,
+    unit: '分钟',
+    concept: '环形同向：多跑一圈就追上',
+    hints: solveHints({
+      concept: '同向出发：快的要比慢的多跑整整一圈',
+      knowns: [`周长 ${C2} 米`, `甲每分钟 ${a2} 米`, `乙每分钟 ${b2} 米`],
+      ask: '多少分钟第一次追上',
+      method: `同向而行，甲每分钟只比乙多跑 (${a2} − ${b2}) 米；当多跑的路程正好等于一圈 ${C2} 米时，甲就追上乙了。`,
+      setup: `第一步：${a2} − ${b2} = 每分钟多跑的米数。第二步：${C2} ÷ 这个差 = 追上所用时间。`,
+      first: `每分钟多跑 ${a2 - b2} 米，${C2} 米需要几分钟`,
+    }),
+  })
+}
+
+// ---------- 奥数思维（鸡兔同笼变式 · 盈亏 · 年龄） ----------
+function genOlympiad(d: Difficulty, rng: Rng) {
+  if (d === 'hard') {
+    if (rng.bool()) {
+      // 经典鸡兔同笼（数字较小）
+      const c = rng.int(3, 9)
+      const r = rng.int(2, 8)
+      return makeQ({ ...M, name: '奥数思维', kind: 'word' }, d, {
+        prompt: `笼子里有鸡和兔共 ${c + r} 只，数一数腿一共有 ${2 * c + 4 * r} 条。鸡有多少只？`,
+        answer: c,
+        unit: '只',
+        concept: '鸡兔同笼：假设法',
+        hints: solveHints({
+          concept: '假设全是兔，多出的腿就是鸡省下的',
+          knowns: [`鸡兔共 ${c + r} 只`, `腿共 ${2 * c + 4 * r} 条`, '鸡 2 条腿，兔 4 条腿'],
+          ask: '鸡有多少只',
+          method: `假设 ${c + r} 只全是兔，应有 ${4 * (c + r)} 条腿，比实际多出来的腿，每多 2 条说明有一只鸡。`,
+          setup: `第一步：${4 * (c + r)} − ${2 * c + 4 * r} = 多算的腿。第二步：多算的腿 ÷ 2 = 鸡的只数。`,
+          first: `多算了 ${4 * (c + r) - (2 * c + 4 * r)} 条腿，每只鸡被多算了 2 条`,
+        }),
+      })
+    }
+    // 年龄问题：年龄差不变
+    const tuples: [number, number, number, number, number][] = [
+      [36, 12, 4, 8, 4],
+      [40, 13, 4, 9, 4],
+      [32, 8, 5, 6, 2],
+      [45, 15, 4, 10, 5],
+      [50, 14, 4, 12, 2],
+      [40, 10, 7, 5, 5],
+      [44, 12, 9, 4, 8],
+      [52, 16, 5, 9, 7],
+    ]
+    const [pa, son, k, sonThen, yrs] = rng.pick(tuples)
+    return makeQ({ ...M, name: '奥数思维', kind: 'word' }, d, {
+      prompt: `今年爸爸 ${pa} 岁，儿子 ${son} 岁。几年前爸爸的年龄恰好是儿子的 ${k} 倍？`,
+      answer: yrs,
+      unit: '年',
+      concept: '年龄问题：年龄差永远不变',
+      hints: solveHints({
+        concept: '年龄差不随时间改变',
+        knowns: [`爸爸 ${pa} 岁`, `儿子 ${son} 岁`],
+        ask: '几年前爸爸年龄是儿子的 k 倍',
+        method: `两人的年龄差始终是 ${pa - son} 岁。当爸爸是儿子的 ${k} 倍时，年龄差正好是儿子当时年龄的 ${k - 1} 倍。`,
+        setup: `第一步：${pa} − ${son} = ${pa - son}（年龄差）。第二步：${pa - son} ÷ ${k - 1} = 儿子当时的岁数，再用 ${son} 减它。`,
+        first: `儿子当时 ${sonThen} 岁，现在的 ${son} 岁比它大几岁`,
+      }),
+    })
+  }
+  // challenge：鸡兔同笼变式（得分/运费）· 盈亏问题
+  const type = rng.pick(['score', 'score', 'profit'] as const)
+  if (type === 'score') {
+    // 答题得分：对 +a 分、错扣 b 分
+    const tuples: [number, number, number, number, number][] = [
+      [10, 5, 2, 36, 8],
+      [10, 5, 2, 29, 7],
+      [10, 5, 2, 22, 6],
+      [10, 5, 2, 15, 5],
+      [20, 3, 1, 28, 12],
+      [20, 3, 1, 20, 10],
+      [20, 3, 1, 12, 8],
+      [20, 3, 1, 40, 15],
+    ]
+    const [n, a, b, s, right] = rng.pick(tuples)
+    return makeQ({ ...M, name: '奥数思维', kind: 'word' }, d, {
+      prompt: `数学竞赛共 ${n} 道题，答对一题得 ${a} 分，答错一题扣 ${b} 分（不答按错算）。小华全部作答，最后得了 ${s} 分。他答对了几道题？`,
+      answer: right,
+      unit: '道',
+      concept: '鸡兔同笼变形：得分问题',
+      hints: solveHints({
+        concept: '假设全对，用总分差反推错题数',
+        knowns: [`共 ${n} 题`, `答对得 ${a} 分`, `答错扣 ${b} 分`, `得了 ${s} 分`],
+        ask: '答对几道题',
+        method: `假设全对应得 ${a * n} 分。每把一道对题换成错题，分数要少 (${a} + ${b}) 分。`,
+        setup: `第一步：${a * n} − ${s} = 少得的总分。第二步：÷ (${a} + ${b}) = 错题数，再用 ${n} 减它。`,
+        first: `比全对少得了 ${a * n - s} 分，每错一题少 ${a + b} 分`,
+      }),
+    })
+  }
+  // 盈亏问题：先定人数 n 正推，保证整除
+  const n = rng.int(6, 12)
+  const p1 = rng.int(3, 5)
+  const g = rng.pick([1, 2])
+  const mult = rng.int(1, n - 1) // m1 = g·mult < g·n，保证还有"亏"
+  const m1 = g * mult
+  const m2 = g * (n - mult)
+  const p2 = p1 + g
+  const total = n * p1 + m1
+  return makeQ({ ...M, name: '奥数思维', kind: 'word' }, d, {
+    prompt: `老师给小朋友分苹果：每人分 ${p1} 个，多出 ${m1} 个；每人分 ${p2} 个，还缺 ${m2} 个。一共有多少个苹果？`,
+    answer: total,
+    unit: '个',
+    concept: '盈亏问题：两次分法对比',
+    hints: solveHints({
+      concept: '盈亏问题：总差 ÷ 每人差 = 人数',
+      knowns: [`每人 ${p1} 个多 ${m1} 个`, `每人 ${p2} 个缺 ${m2} 个`],
+      ask: '苹果共有多少个',
+      method: `两种分法总共相差 (${m1} + ${m2}) 个苹果，是因为每人多分了 (${p2} − ${p1}) 个。先求人数，再代回任一种分法求总数。`,
+      setup: `第一步：(${m1} + ${m2}) ÷ (${p2} − ${p1}) = 人数。第二步：人数 × ${p1} + ${m1} = 苹果总数。`,
+      first: `人数是 ${n} 人，代回"每人 ${p1} 个多 ${m1} 个"算总数`,
+    }),
+  })
+}
+
+// ---------- 定义新运算与巧算 ----------
+function genNewOp(d: Difficulty, rng: Rng) {
+  if (d === 'hard') {
+    // 直接按新规则计算
+    const rules: [string, string, (a: number, b: number) => number, (a: number, b: number) => string][] = [
+      ['△', 'a × b + a + b', (a, b) => a * b + a + b, (a: number, b: number) => `先算乘法：${a} × ${b} = ${a * b}`],
+      ['◇', '3 × a − 2 × b', (a, b) => 3 * a - 2 * b, (a: number, b: number) => `先算 3 × ${a} = ${3 * a}`],
+      ['☆', 'a × 2 + b × 3', (a, b) => a * 2 + b * 3, (a: number, b: number) => `先算 ${a} × 2 = ${a * 2}`],
+    ]
+    const [sym, ruleStr, fn, firstStep] = rng.pick(rules)
+    const a = rng.int(2, 8)
+    const b = rng.int(2, 8)
+    return makeQ({ ...M, name: '定义新运算', kind: 'calc' }, d, {
+      prompt: `规定新运算：a ${sym} b 表示 "${ruleStr}"。按这个规则计算：${a} ${sym} ${b} = ？`,
+      answer: fn(a, b),
+      concept: '定义新运算：按新规则代入',
+      hints: [
+        `新运算不难，就是把 ${a} 和 ${b} 按规则"代入"式子里。`,
+        `把 a 换成 ${a}、b 换成 ${b}：${ruleStr.replace(/a/g, `(${a})`).replace(/b/g, `(${b})`)}。`,
+        `${firstStep(a, b)}，剩下的加减交给你完成！`,
+      ],
+    })
+  }
+  // challenge：已知新运算的结果，反求未知数
+  // 规则 a☆b = k×a + b；给 a、k、结果 s，反求 x = s − k×a
+  const tuples: [string, number, number, number, number][] = [
+    ['☆', 4, 3, 15, 3],
+    ['☆', 5, 3, 19, 4],
+    ['☆', 6, 3, 23, 5],
+    ['☆', 7, 3, 27, 6],
+    ['☆', 3, 4, 16, 4],
+    ['☆', 5, 4, 26, 6],
+    ['☆', 6, 2, 19, 7],
+    ['☆', 8, 2, 23, 7],
+  ]
+  const [sym, a, k, s, x] = rng.pick(tuples)
+  return makeQ({ ...M, name: '定义新运算', kind: 'calc' }, d, {
+    prompt: `规定新运算：a ${sym} b 表示 "a 的 ${k} 倍加上 b"。已知 ${a} ${sym} x = ${s}，x 是多少？`,
+    answer: x,
+    concept: '新运算 + 逆向求未知数',
+    hints: [
+      `先把 x 按规则代入：${a} ${sym} x 就是 ${a} 的 ${k} 倍加 x。`,
+      `展开成算式：${k} × ${a} + x = ${s}。这就是一个方程了。`,
+      `两边同时减去 ${k * a}：x = ${s} − ${k * a}。最后一步你来算！`,
+    ],
   })
 }
 
@@ -777,5 +1265,8 @@ export const G6_TOPICS: TopicDef[] = [
   { id: 'g6-solid', grade: 6, name: '圆柱与圆锥', kind: 'word', difficulties: ['hard', 'challenge'], term: 2, gen: genSolid },
   { id: 'g6-neg', grade: 6, name: '负数', kind: 'concept', difficulties: ['easy', 'medium'], term: 2, gen: genNeg },
   { id: 'g6-pattern', grade: 6, name: '数学广角·数与形', kind: 'concept', difficulties: ['hard', 'challenge'], term: 2, gen: genPattern },
+  { id: 'g6-journey', grade: 6, name: '行程问题（追及·火车·环形）', kind: 'word', difficulties: ['hard', 'challenge'], term: 2, gen: genJourney },
+  { id: 'g6-olympiad', grade: 6, name: '奥数思维（鸡兔同笼·盈亏·年龄）', kind: 'word', difficulties: ['hard', 'challenge'], term: 1, gen: genOlympiad },
+  { id: 'g6-newop', grade: 6, name: '定义新运算', kind: 'calc', difficulties: ['hard', 'challenge'], term: 2, gen: genNewOp },
   { id: 'g6-combo', grade: 6, name: '综合应用（相遇·工程·利润）', kind: 'word', difficulties: ['medium', 'hard', 'challenge'], term: 2, gen: genCombo },
 ]

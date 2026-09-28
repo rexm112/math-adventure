@@ -139,20 +139,37 @@ function genAddSub(d: Difficulty, rng: Rng) {
       ],
     })
   }
-  // challenge：不等式中的最小值
-  const a = rng.int(5, 9)
-  const gap = rng.int(2, 4)
-  const sum = a + gap
-  const ans = gap + 1
+  // challenge：不等式最小值 / 凑十巧算
+  if (rng.bool()) {
+    const a = rng.int(5, 9)
+    const gap = rng.int(2, 4)
+    const sum = a + gap
+    const ans = gap + 1
+    return makeQ({ ...M, name: '20以内加减法', kind: 'calc' }, d, {
+      prompt: `${a} + □ > ${sum}，□ 里最小填几？`,
+      answer: ans,
+      concept: '不等式与最小值',
+      hints: [
+        `"大于"说明和要比 ${sum} 大，但只大一点点也算对，我们找"最小"的那个。`,
+        `先想一个关键问题：${a} 加几正好等于 ${sum}？`,
+        `如果 □ 填那个数，和就"等于" ${sum}，不是"大于"，所以还要再大 1。`,
+        `比那个数大 1 的数是几？填进去验算一下。`,
+      ],
+    })
+  }
+  // 凑十巧算：三个数中两个能凑成十
+  const a = rng.int(2, 8)
+  const c = 10 - a
+  const b = rng.int(2, 9)
   return makeQ({ ...M, name: '20以内加减法', kind: 'calc' }, d, {
-    prompt: `${a} + □ > ${sum}，□ 里最小填几？`,
-    answer: ans,
-    concept: '不等式与最小值',
+    prompt: `巧算：${a} + ${b} + ${c} = ？（先找能凑成十的好朋友）`,
+    answer: 10 + b,
+    concept: '凑十巧算',
     hints: [
-      `"大于"说明和要比 ${sum} 大，但只大一点点也算对，我们找"最小"的那个。`,
-      `先想一个关键问题：${a} 加几正好等于 ${sum}？`,
-      `如果 □ 填那个数，和就"等于" ${sum}，不是"大于"，所以还要再大 1。`,
-      `比那个数大 1 的数是几？填进去验算一下。`,
+      '先别急着从左往右算，看看有没有两个数是"凑十好朋友"。',
+      `${a} 和 ${c} 正好凑成 10，因为 ${a} + ${c} = 10。`,
+      '先算这两个数的和，把它们圈起来记作 10。',
+      `再用 10 + ${b}，最后等于多少？`,
     ],
   })
 }
@@ -441,17 +458,37 @@ function genMoney(d: Difficulty, rng: Rng) {
       ],
     })
   }
-  const j = rng.int(1, 9)
-  return makeQ({ ...M, name: '认识人民币', kind: 'calc' }, d, {
-    prompt: `1 元 ${j} 角 = 多少角？`,
-    answer: 10 + j,
-    unit: '角',
-    concept: '元角换算',
-    hints: [
-      '1 元和 1 角是"邻居"关系：1 元 = 10 角。',
-      `先把 1 元换成 10 角，再加上旁边的 ${j} 角。`,
-      `10 角 + ${j} 角 = ？`,
-    ],
+  // challenge：元角换算 / 购物找零
+  if (rng.bool()) {
+    const j = rng.int(1, 9)
+    return makeQ({ ...M, name: '认识人民币', kind: 'calc' }, d, {
+      prompt: `1 元 ${j} 角 = 多少角？`,
+      answer: 10 + j,
+      unit: '角',
+      concept: '元角换算',
+      hints: [
+        '1 元和 1 角是"邻居"关系：1 元 = 10 角。',
+        `先把 1 元换成 10 角，再加上旁边的 ${j} 角。`,
+        `10 角 + ${j} 角 = ？`,
+      ],
+    })
+  }
+  // 购物找零：两件商品，付 10 元
+  const p1 = rng.int(2, 5)
+  const p2 = rng.int(1, 10 - p1 - 1)
+  return makeQ({ ...M, name: '认识人民币', kind: 'word' }, d, {
+    prompt: `小明买了一支 ${p1} 元的铅笔和一本 ${p2} 元的笔记本，付给阿姨 10 元，应找回多少元？`,
+    answer: 10 - p1 - p2,
+    unit: '元',
+    concept: '购物找零（两步计算）',
+    hints: solveHints({
+      concept: '先算一共花去多少元，再算找回多少元',
+      knowns: [`铅笔 ${p1} 元`, `笔记本 ${p2} 元`, `付出 10 元`],
+      ask: '找回多少元',
+      method: '买东西花掉的钱要先加起来，再用 10 元减去花掉的。',
+      setup: `第一步：${p1} + ${p2} = 一共花的钱。第二步：10 − 这个得数 = 找回的钱。`,
+      first: `两件一共 ${p1 + p2} 元，10 元里去掉它`,
+    }),
   })
 }
 
@@ -494,22 +531,135 @@ function genWord(d: Difficulty, rng: Rng) {
       }),
     })
   }
-  // challenge：一样多问题
-  const a = rng.int(12, 20)
-  const b = rng.int(2, 4)
+  // challenge：一样多问题 / 逆推"原来"
+  if (rng.bool()) {
+    const a = rng.int(12, 20)
+    const b = rng.int(2, 4)
+    return makeQ({ ...M, name: '解决问题', kind: 'word' }, d, {
+      prompt: `哥哥有 ${a} 颗糖，给妹妹 ${b} 颗后，两人的糖就一样多。妹妹原来有几颗糖？`,
+      answer: a - 2 * b,
+      unit: '颗',
+      concept: '移多补少',
+      hints: solveHints({
+        concept: '移多补少：给出一些后两人同样多',
+        knowns: [`哥哥原来有 ${a} 颗`, `给了妹妹 ${b} 颗后两人一样多`],
+        ask: '妹妹原来有几颗',
+        method: '关键句是"一样多"：先算给完之后哥哥有多少颗，那时妹妹也是这么多。',
+        setup: `第一步：${a} − ${b} = ？这就是两人现在各自的颗数`,
+        first: `妹妹现在这么多里，有 ${b} 颗是哥哥给的，去掉才是原来的`,
+      }),
+    })
+  }
+  // 逆推：已知变化后的结果，倒推原来
+  const start = rng.int(10, 15)
+  const flew = rng.int(3, 6)
+  const came = rng.int(1, 3)
   return makeQ({ ...M, name: '解决问题', kind: 'word' }, d, {
-    prompt: `哥哥有 ${a} 颗糖，给妹妹 ${b} 颗后，两人的糖就一样多。妹妹原来有几颗糖？`,
-    answer: a - 2 * b,
-    unit: '颗',
-    concept: '移多补少',
+    prompt: `树枝上停着一群小鸟，先飞走了 ${flew} 只，又飞来了 ${came} 只，现在还有 ${start} 只。树上原来有多少只小鸟？`,
+    answer: start + flew - came,
+    unit: '只',
+    concept: '倒推法（逆向思考）',
     hints: solveHints({
-      concept: '移多补少：给出一些后两人同样多',
-      knowns: [`哥哥原来有 ${a} 颗`, `给了妹妹 ${b} 颗后两人一样多`],
-      ask: '妹妹原来有几颗',
-      method: '关键句是"一样多"：先算给完之后哥哥有多少颗，那时妹妹也是这么多。',
-      setup: `第一步：${a} - ${b} = ？这就是两人现在各自的颗数`,
-      first: `妹妹现在这么多里，有 ${b} 颗是哥哥给的，去掉才是原来的`,
+      concept: '知道现在、倒推原来：把过程倒着走一遍',
+      knowns: [`飞走 ${flew} 只`, `又飞来 ${came} 只`, `现在有 ${start} 只`],
+      ask: '原来有多少只',
+      method: '倒着想：飞来的要"退回去"，飞走的要"请回来"。',
+      setup: `第一步：${start} − ${came}（去掉后飞来的）。第二步：得数 + ${flew}（补回飞走的）。`,
+      first: `倒推第一步得 ${start - came}，再把飞走的 ${flew} 只加回来`,
     }),
+  })
+}
+
+// ---------- 思维乐园（排队 · 锯木头 · 爬楼 · 数方块） ----------
+function genThink(d: Difficulty, rng: Rng) {
+  if (d === 'hard') {
+    const type = rng.pick(['queue', 'queue', 'saw', 'stairs'] as const)
+    if (type === 'queue') {
+      const front = rng.int(3, 7)
+      const back = rng.int(2, 6)
+      return makeQ({ ...M, name: '思维乐园', kind: 'word' }, d, {
+        prompt: `小朋友们排队做操，小红前面有 ${front} 人，后面有 ${back} 人。这一队一共有多少人？（别忘了我哦）`,
+        answer: front + back + 1,
+        unit: '人',
+        concept: '排队问题：别忘了自己',
+        hints: solveHints({
+          concept: '排队的总人数 = 前面的 + 后面的 + 自己',
+          knowns: [`小红前面 ${front} 人`, `小红后面 ${back} 人`],
+          ask: '一共有多少人',
+          method: '画一排圆圈代表队伍，把小红标出来：她前面一段、她自己一个、她后面一段。',
+          setup: `第一步：${front} + ${back} = 前后的人数。第二步：再 + 1（小红自己）。`,
+          first: `前后一共 ${front + back} 人，加上小红自己`,
+        }),
+      })
+    }
+    if (type === 'saw') {
+      const seg = rng.int(4, 8)
+      return makeQ({ ...M, name: '思维乐园', kind: 'word' }, d, {
+        prompt: `把一根木头锯成 ${seg} 段，需要锯几次？`,
+        answer: seg - 1,
+        unit: '次',
+        concept: '锯木头：段数比次数多 1',
+        hints: [
+          '拿笔画一画：一条线段上每锯一次，就多出一个"切口"。',
+          `锯 1 次变 2 段，锯 2 次变 3 段……每锯一次，段数只多 1。`,
+          `所以要变成 ${seg} 段，锯的次数比段数少 1。是几次？`,
+        ],
+      })
+    }
+    const floor = rng.int(3, 9)
+    return makeQ({ ...M, name: '思维乐园', kind: 'word' }, d, {
+      prompt: `乐乐家住 ${floor} 楼，他从 1 楼走楼梯回家，要走几层楼梯？`,
+      answer: floor - 1,
+      unit: '层',
+      concept: '爬楼问题：楼层数差 1',
+      hints: [
+        '从 1 楼到 2 楼要走 1 层楼梯，从 1 楼到 3 楼要走 2 层……',
+        '楼梯的"层数"比楼的"层数"少 1，因为 1 楼不用爬楼梯。',
+        `住 ${floor} 楼，就是 ${floor} − 1 层楼梯。算一算！`,
+      ],
+    })
+  }
+  // challenge：排队变式 / 数方块
+  if (rng.bool()) {
+    const x = rng.int(4, 9)
+    const y = rng.int(3, 8)
+    return makeQ({ ...M, name: '思维乐园', kind: 'word' }, d, {
+      prompt: `排队时从前面数，小明是第 ${x} 个；从后面数，他是第 ${y} 个。这一队一共有多少人？`,
+      answer: x + y - 1,
+      unit: '人',
+      concept: '排队问题：自己被数了两次',
+      hints: solveHints({
+        concept: '从前数和从后数，小明都被算到了',
+        knowns: [`从前面数是第 ${x} 个`, `从后面数是第 ${y} 个`],
+        ask: '一共有多少人',
+        method: '两段人数相加时，小明被数了 2 次，所以要去掉多余的 1 次。',
+        setup: `第一步：${x} + ${y} = ？第二步：再 − 1（多算的小明自己）。`,
+        first: `两段加起来是 ${x + y}，小明被数了两次`,
+      }),
+    })
+  }
+  const layouts: [number[], number][] = [
+    [[4, 3, 2, 1], 10],
+    [[3, 2, 1], 6],
+    [[5, 4, 3, 2, 1], 15],
+    [[4, 2, 1], 7],
+    [[3, 3, 1], 7],
+    [[4, 4, 2, 1], 11],
+    [[5, 3, 2], 10],
+    [[6, 4, 2, 1], 13],
+  ]
+  const [levels, total] = rng.pick(layouts)
+  return makeQ({ ...M, name: '思维乐园', kind: 'word' }, d, {
+    prompt: '数一数，下图中小正方体一共有多少个？（藏着的小正方体也要算哦）',
+    figure: { kind: 'cubeStack', levels },
+    answer: total,
+    unit: '个',
+    concept: '数方块：分层数再相加',
+    hints: [
+      '看不见的小方块藏在下面，被上面的压住了，别漏掉。',
+      `分层数：从下往上每层分别是 ${levels.join(' 个、')} 个。`,
+      `把每层的个数加起来：${levels.join(' + ')} = ？`,
+    ],
   })
 }
 
@@ -521,5 +671,6 @@ export const G1_TOPICS: TopicDef[] = [
   { id: 'g1-clock', grade: 1, name: '认识钟表', kind: 'concept', difficulties: ['easy', 'medium', 'hard'], term: 1, gen: genClock },
   { id: 'g1-money', grade: 1, name: '认识人民币', kind: 'calc', difficulties: ['medium', 'hard', 'challenge'], term: 2, gen: genMoney },
   { id: 'g1-pattern', grade: 1, name: '找规律', kind: 'concept', difficulties: ['medium', 'hard', 'challenge'], term: 2, gen: genPattern },
+  { id: 'g1-think', grade: 1, name: '思维乐园（排队·锯木头·数方块）', kind: 'word', difficulties: ['hard', 'challenge'], term: 2, gen: genThink },
   { id: 'g1-word', grade: 1, name: '解决问题', kind: 'word', difficulties: ['medium', 'hard', 'challenge'], term: 1, gen: genWord },
 ]
