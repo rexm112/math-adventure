@@ -25,7 +25,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # 项目级配置：在仓库 Settings → Secrets and variables → Actions 里配置后自动注入构建
+      # AI_KEY / AI_ENDPOINT / AI_MODEL（可选，AI 讲解老师）
+      # SYNC_TOKEN（可选，云同步用的 GitHub Token，仅需 gist 读写权限）
       - run: npm run build
+        env:
+          VITE_AI_KEY: ${{ secrets.AI_KEY }}
+          VITE_AI_ENDPOINT: ${{ secrets.AI_ENDPOINT }}
+          VITE_AI_MODEL: ${{ secrets.AI_MODEL }}
+          VITE_SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

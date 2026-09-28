@@ -1,20 +1,22 @@
 import { useRef, useState } from 'react'
 import { useStore, type Profile } from '../store'
+import { envConfig } from '../config'
 import { Modal } from './Bits'
 
-/** 设置面板：AI 讲解分析（家长配 API Key）、云同步（GitHub Gist）、数据导出/导入 */
+/** 设置面板：AI 讲解老师（OpenAI 兼容端点，支持 Coding Plan）、云同步、备份。项目级配置已内置时，此处可按设备覆盖。 */
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const { settings, setSettings, soundOn, toggleSound, syncCfg, setupSync, syncNow, setSyncCfg, profiles, importProfiles } = useStore()
   const [aiKey, setAiKey] = useState(settings.aiKey ?? '')
-  const [aiModel, setAiModel] = useState(settings.aiModel ?? 'glm-4-flash')
+  const [aiEndpoint, setAiEndpoint] = useState(settings.aiEndpoint ?? settings.aiBase ?? '')
+  const [aiModel, setAiModel] = useState(settings.aiModel ?? '')
   const [token, setToken] = useState('')
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const saveAI = () => {
-    setSettings({ aiKey: aiKey.trim(), aiModel: aiModel.trim() || 'glm-4-flash' })
-    setMsg(aiKey.trim() ? 'AI 老师已就绪 ✓（只在讲解分析时调用）' : '已关闭 AI，讲解用离线批改')
+    setSettings({ aiKey: aiKey.trim(), aiEndpoint: aiEndpoint.trim(), aiModel: aiModel.trim() })
+    setMsg(aiKey.trim() ? 'AI 老师已就绪 ✓（本机设置将覆盖项目级配置）' : '已恢复使用项目级配置/离线批改')
   }
 
   const doSetup = async () => {
@@ -67,17 +69,28 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     reader.readAsText(f)
   }
 
+  const envAI = envConfig.aiKey
+    ? `项目级配置已内置${envConfig.aiEndpoint?.includes('coding') ? '（Coding Plan）' : ''}：${envConfig.aiModel ?? 'glm-4-flash'}`
+    : null
+
   return (
     <Modal onClose={onClose}>
       <h3 style={{ margin: '0 0 12px' }}>⚙️ 设置（家长操作）</h3>
 
       <div className="field">
-        <label>🦉 AI 讲解老师（可选，推荐）</label>
-        <input type="text" value={aiKey} onChange={(e) => setAiKey(e.target.value)} placeholder="粘贴智谱 API Key（bigmodel.cn，glm-4-flash 免费）" />
-        <input type="text" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="模型名，默认 glm-4-flash" style={{ marginTop: 8 }} />
+        <label>🦉 AI 讲解老师（可选）</label>
+        <input type="text" value={aiKey} onChange={(e) => setAiKey(e.target.value)} placeholder="API Key（留空则用项目级配置或离线批改）" />
+        <input
+          type="text"
+          value={aiEndpoint}
+          onChange={(e) => setAiEndpoint(e.target.value)}
+          placeholder="端点（默认 https://open.bigmodel.cn/api/paas/v4）"
+          style={{ marginTop: 8 }}
+        />
+        <input type="text" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="模型（默认 glm-4-flash；Coding Plan 可用 glm-4.6 等）" style={{ marginTop: 8 }} />
         <div className="row" style={{ marginTop: 8 }}>
           <button className="btn" style={{ flex: 1 }} onClick={saveAI}>
-            保存 AI 设置
+            保存本机 AI 设置
           </button>
           <button className="btn ghost" onClick={() => setSettings({ tts: settings.tts === false ? true : false })}>
             {settings.tts === false ? '🔇 语音播报关' : '🔊 语音播报开'}
@@ -87,7 +100,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <p className="muted" style={{ fontSize: '0.8rem' }}>
-          未配置时使用离线批改（判断孩子讲的是思路还是只报数字），配置后由 AI 老师逐句点评并讲解逻辑。Key 只保存在这台设备的浏览器里，不会上传到代码仓库。
+          支持 OpenAI 兼容端点：智谱开放平台用默认端点 + glm-4-flash（免费）；智谱 Coding Plan 的 key 用端点
+          <code> https://open.bigmodel.cn/api/coding/paas/v4</code>；其他厂商填对应端点即可。
+          {envAI && <>（{envAI}，本机不填即用它）</>}
         </p>
       </div>
 
@@ -105,21 +120,26 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               <button className="btn ghost" style={{ flex: 1 }} disabled={busy} onClick={() => doSync('pull')}>
                 ⬇️ 下载合并
               </button>
-              <button className="btn ghost" style={{ flex: 1 }} onClick={() => { setSyncCfg(null); setMsg('已断开云同步（云端数据仍在）') }}>
+              <button className="btn ghost" style={{ flex: 1 }} onClick={() => { setSyncCfg(null); setMsg('已断开本机云同步（项目级配置会在下次打开时自动重连）') }}>
                 断开
               </button>
             </div>
           </>
         ) : (
           <>
-            <input type="text" value={token} onChange={(e) => setToken(e.target.value)} placeholder="粘贴 GitHub Token（需要 gist 读写权限）" />
+            {envConfig.syncToken ? (
+              <p className="muted" style={{ margin: 0 }}>
+                项目级配置已内置同步 Token，打开 App 会自动连接并合并，无需在此填写。
+                <br />
+                如需用另一个账号/仓库，可在下面粘贴其他 Token 覆盖。
+              </p>
+            ) : null}
+            <input type="text" value={token} onChange={(e) => setToken(e.target.value)} placeholder="粘贴 GitHub Token（需要 gist 读写权限）" style={{ marginTop: 8 }} />
             <button className="btn" style={{ marginTop: 8, width: '100%' }} disabled={busy || !token.trim()} onClick={doSetup}>
               连接云同步
             </button>
             <p className="muted" style={{ fontSize: '0.8rem' }}>
               已有仓库会自动识别并合并（换设备粘同一个 token 即可）；第一次使用会自动创建一个私密 Gist 存放数据。
-              <br />
-              Token 要求：经典 token 勾选 <b>gist</b> 权限，或 Fine-grained token 在 Account permissions 里勾「Gists: Read and write」。Token 只保存在这台设备的浏览器里。
             </p>
           </>
         )}

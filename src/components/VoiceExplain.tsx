@@ -3,6 +3,7 @@ import type { Question } from '../types'
 import { analyzeExplanation, type AnalysisResult } from '../lib/ai'
 import { createRecorder, speak, sttSupported } from '../lib/speech'
 import { useStore } from '../store'
+import { aiConfig } from '../config'
 
 /**
  * 错题讲思路环节：孩子答对后，用语音（或打字）讲出解题逻辑，
@@ -54,7 +55,8 @@ export default function VoiceExplain({ q, onDone }: { q: Question; onDone: (pass
     }
     setError('')
     setPhase('analyzing')
-    const r = await analyzeExplanation(q, text, settings.aiKey ? { key: settings.aiKey, base: settings.aiBase, model: settings.aiModel } : undefined)
+    const ai = aiConfig(settings)
+    const r = await analyzeExplanation(q, text, ai.key ? { key: ai.key, endpoint: ai.endpoint, model: ai.model } : undefined)
     setResult(r)
     setAttempts((a) => a + 1)
     setPhase('result')

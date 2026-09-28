@@ -1,5 +1,8 @@
 // ---------- 解题思路讲解分析 ----------
-// 优先调用家长配置的 AI（OpenAI 兼容接口，默认智谱 bigmodel.cn，glm-4-flash 免费/低价）；
+// 通用 OpenAI 兼容接口：
+// - 智谱开放平台：endpoint 默认 https://open.bigmodel.cn/api/paas/v4（glm-4-flash 免费）
+// - 智谱 Coding Plan：endpoint 用 https://open.bigmodel.cn/api/coding/paas/v4
+// - 其他厂商：填对应的 OpenAI 兼容端点（如 https://api.deepseek.com/v1）
 // 未配置或调用失败时退回本地规则判定（检查是否说出了"逻辑"而非只报数字）。
 
 import type { Question } from '../types'
@@ -44,7 +47,7 @@ function ruleAnalyze(q: Question, transcript: string): AnalysisResult {
   }
 }
 
-async function aiAnalyze(q: Question, transcript: string, key: string, base: string, model: string): Promise<AnalysisResult> {
+async function aiAnalyze(q: Question, transcript: string, key: string, endpoint: string, model: string): Promise<AnalysisResult> {
   const expected = [`知识点：${q.concept}`, ...q.hints.map((h, i) => `提示${i + 1}：${h}`)].join('\n')
   const sys = [
     '你是一位耐心的小学数学老师，正在听学生口头讲解解题思路。',
@@ -54,7 +57,7 @@ async function aiAnalyze(q: Question, transcript: string, key: string, base: str
     '只输出一个 JSON 对象：{"pass": true/false, "feedback": "给孩子的话", "explanation": "没通过时的完整逻辑讲解，通过则给一句升华"}',
   ].join('\n')
   const user = `【题目】${q.prompt}\n【参考要点】\n${expected}\n【学生的讲解】${transcript}`
-  const res = await fetch(`${base.replace(/\/$/, '')}/api/paas/v4/chat/completions`, {
+  const res = await fetch(`${endpoint.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: JSON.stringify({
@@ -84,11 +87,11 @@ async function aiAnalyze(q: Question, transcript: string, key: string, base: str
 export async function analyzeExplanation(
   q: Question,
   transcript: string,
-  ai?: { key: string; base?: string; model?: string },
+  ai?: { key: string; endpoint?: string; model?: string },
 ): Promise<AnalysisResult> {
   if (ai?.key) {
     try {
-      return await aiAnalyze(q, transcript, ai.key, ai.base || 'https://open.bigmodel.cn', ai.model || 'glm-4-flash')
+      return await aiAnalyze(q, transcript, ai.key, ai.endpoint || 'https://open.bigmodel.cn/api/paas/v4', ai.model || 'glm-4-flash')
     } catch {
       // 网络/额度/CORS 问题都退回规则判定，保证流程不卡住
       return { ...ruleAnalyze(q, transcript), feedback: `（AI 老师暂时联系不上，先用离线批改～）\n${ruleAnalyze(q, transcript).feedback}` }

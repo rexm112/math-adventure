@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { DifficultyMode, Grade, Question, SessionSummary } from './types'
 import { pickReviewQuestions, useStore } from './store'
+import { envConfig } from './config'
 import HomePage from './pages/HomePage'
 import SetupPage from './pages/SetupPage'
 import QuizPage from './pages/QuizPage'
@@ -29,6 +30,23 @@ function startReview(profileId: string): View | null {
 export default function App() {
   const [view, setView] = useState<View>({ name: 'home' })
   const finishSession = useStore((s) => s.finishSession)
+
+  // 启动时统一云同步：项目级 Token 自动连接（免每台设备配置）；已有连接的设备先拉取合并
+  useEffect(() => {
+    void (async () => {
+      const s = useStore.getState()
+      try {
+        if (!s.syncCfg && envConfig.syncToken) {
+          await s.setupSync(envConfig.syncToken)
+          await s.syncNow('pull')
+        } else if (s.syncCfg) {
+          await s.syncNow('pull')
+        }
+      } catch {
+        /* 网络不佳时跳过，不影响本地使用；下次打开再试 */
+      }
+    })()
+  }, [])
 
   if (view.name === 'home') {
     return (

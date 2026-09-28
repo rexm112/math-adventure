@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { AVATARS, useStore, type Profile } from '../store'
 import type { Grade } from '../types'
 import { levelOf } from '../lib/scoring'
@@ -20,15 +20,6 @@ export default function HomePage({
   const [name, setName] = useState('')
   const [avatar, setAvatar] = useState(AVATARS[0])
   const [grade, setGrade] = useState<Grade>(1)
-
-  // 配置过云同步时，打开首页先拉一次云端（家里两台设备互相同步）
-  const syncCfg = useStore((s) => s.syncCfg)
-  const syncNow = useStore((s) => s.syncNow)
-  useEffect(() => {
-    if (!syncCfg) return
-    void syncNow('pull').catch(() => undefined)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const create = () => {
     const n = name.trim() || '小勇士'

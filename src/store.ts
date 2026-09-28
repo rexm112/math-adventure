@@ -36,8 +36,10 @@ export interface Profile {
 }
 
 export interface AppSettings {
-  /** 家长配置的 AI（OpenAI 兼容，默认智谱），用于讲解分析 */
+  /** 家长配置的 AI（OpenAI 兼容端点）：开放平台或 Coding Plan 均可 */
   aiKey?: string
+  aiEndpoint?: string
+  /** 兼容旧字段 */
   aiBase?: string
   aiModel?: string
   /** 自动朗读反馈 */
