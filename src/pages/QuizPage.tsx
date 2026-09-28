@@ -4,7 +4,7 @@ import { buildSession } from '../lib/session'
 import { checkAnswer } from '../lib/checker'
 import { pointsFor, starsFor, streakBonus } from '../lib/scoring'
 import { sfx } from '../lib/sound'
-import { speak } from '../lib/speech'
+import { speak, chineseVoiceMissing } from '../lib/speech'
 import { useStore } from '../store'
 import { AnswerPad } from '../components/AnswerPad'
 import { Confetti, DiffChip, Modal, ProgressDots, Stars } from '../components/Bits'
@@ -45,22 +45,22 @@ export default function QuizPage({ profileId, grade, topicId, mode, review, onEx
   const [encourage, setEncourage] = useState('')
   const [explainQ, setExplainQ] = useState<Question | null>(null)
   const [zoom, setZoom] = useState(false)
-  const [ttsTip, setTtsTip] = useState(false)
+  const [ttsTip, setTtsTip] = useState<'' | 'silent' | 'lang'>('')
+  const tipTimer = useRef<number | undefined>(undefined)
+  const showTip = (kind: 'silent' | 'lang') => {
+    setTtsTip(kind)
+    window.clearTimeout(tipTimer.current)
+    tipTimer.current = window.setTimeout(() => setTtsTip(''), 10000)
+  }
 
-  /** 点朗读：无声时（静音键/音量/微信内核）给出可操作的提示 */
+  /** 点朗读：无声（静音键/音量/微信内核）或缺中文语音包时给出可操作的提示 */
   const readAloud = () => {
-    const inWeChat = /MicroMessenger|QQ\//i.test(navigator.userAgent)
-    speak(q.prompt, {
-      onFail: () => {
-        setTtsTip(true)
-        window.setTimeout(() => setTtsTip(false), 8000)
-      },
-    })
-    if (inWeChat) {
-      // 微信/QQ 内置内核大多没有语音引擎，主动提示
-      setTtsTip(true)
-      window.setTimeout(() => setTtsTip(false), 8000)
+    if (/MicroMessenger|QQ\//i.test(navigator.userAgent)) {
+      showTip('silent')
+    } else if (chineseVoiceMissing()) {
+      showTip('lang')
     }
+    speak(q.prompt, { onFail: () => showTip('silent') })
   }
 
   // 权威数据放 ref，避免闭包过期
@@ -329,10 +329,14 @@ export default function QuizPage({ profileId, grade, topicId, mode, review, onEx
           </div>
         )}
 
-        {/* 朗读无声提示 */}
-        {ttsTip && (
+        {/* 朗读无声 / 缺中文语音提示 */}
+        {ttsTip !== '' && (
           <div className="feedback-bar tts-tip" role="alert">
-            🔈 没听到声音？请检查手机<strong>静音键</strong>和<strong>媒体音量</strong>；若在微信里打开，请复制链接用 Safari / Chrome 打开后朗读。
+            {ttsTip === 'silent' ? (
+              <>🔈 没听到声音？请检查手机<strong>静音键</strong>和<strong>媒体音量</strong>；若在微信里打开，请复制链接用 Safari / Chrome 打开。</>
+            ) : (
+              <>🔈 朗读发音不对，多半是这台手机<strong>没有中文语音包</strong>。安卓：系统设置里搜索「文字转语音」，下载或选择中文语音；iPhone：设置 → 辅助功能 → 朗读内容 → 声音 → 添加中文声音（用 Safari 打开通常自带）。</>
+            )}
           </div>
         )}
 

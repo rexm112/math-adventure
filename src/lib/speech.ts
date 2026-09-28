@@ -21,6 +21,44 @@ export function ttsSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
 
+/**
+ * 题面文本 → 适合朗读的中文说法。
+ * 直接把 "3/4 × 2 = ?" 丢给 TTS 会读出英文符号或怪发音，先翻译成中文词：
+ * 分数按中文语序（3/4 → 4分之3），×÷+=、π、% 等换成汉字。
+ */
+export function ttsText(raw: string): string {
+  let t = raw
+  t = t.replace(/(\d+(?:\.\d+)?)\s*%/g, '百分之$1')
+  t = t.replace(/多少\s*%/g, '百分之多少')
+  t = t.replace(/%/g, '百分之')
+  t = t.replace(/(\d+)\s*\/\s*(\d+)/g, '$2分之$1')
+  t = t.replace(/(\d+)\s*:\s*(\d+)/g, '$1比$2')
+  t = t.replace(/×/g, '乘以')
+  t = t.replace(/÷/g, '除以')
+  t = t.replace(/\+/g, '加')
+  t = t.replace(/−/g, '减')
+  t = t.replace(/(\s)-(\s)/g, '$1减$2')
+  t = t.replace(/=/g, '等于')
+  t = t.replace(/π/g, '圆周率')
+  t = t.replace(/²/g, '的平方')
+  t = t.replace(/℃/g, '度')
+  t = t.replace(/[〇○]/g, '圆圈')
+  t = t.replace(/□/g, '方框')
+  t = t.replace(/>/g, '大于')
+  t = t.replace(/</g, '小于')
+  t = t.replace(/（\s*？\s*）/g, '多少，')
+  return t
+}
+
+/** 本机语音列表里是否有中文语音（列表为空 = 尚未加载/无引擎，返回 false 交由无声检测兜底） */
+export function chineseVoiceMissing(): boolean {
+  const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined
+  if (!synth) return true
+  const voices = synth.getVoices()
+  if (!voices.length) return false
+  return !voices.some((v) => /^zh/i.test(v.lang))
+}
+
 let currentUtterance: SpeechSynthesisUtterance | null = null
 
 /**
@@ -36,7 +74,7 @@ export function speak(text: string, opts: { rate?: number; onFail?: () => void }
   const synth = window.speechSynthesis
   try {
     const start = () => {
-      const u = new SpeechSynthesisUtterance(text)
+      const u = new SpeechSynthesisUtterance(ttsText(text))
       const v = pickChineseVoice()
       if (v) u.voice = v
       u.lang = v?.lang ?? 'zh-CN'
