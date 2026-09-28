@@ -31,16 +31,19 @@ export default function App() {
   const [view, setView] = useState<View>({ name: 'home' })
   const finishSession = useStore((s) => s.finishSession)
 
-  // 启动时统一云同步：项目级 Token 自动连接（免每台设备配置）；已有连接的设备先拉取合并
+  // 启动时统一云同步：项目级 Token 自动连接（免每台设备配置）。
+  // 流程：拉取合并 → 回推上传。回推保证"只在某台设备上存在"的本地数据
+  // （比如同步配置前就产生的档案）也会被补传到云端，所有设备打开一次即可互相看见。
   useEffect(() => {
     void (async () => {
       const s = useStore.getState()
       try {
         if (!s.syncCfg && envConfig.syncToken) {
-          await s.setupSync(envConfig.syncToken)
-          await s.syncNow('pull')
+          await s.setupSync(envConfig.syncToken) // 连接 + 拉取合并
+          await s.syncNow('push') // 补传本机独有的数据
         } else if (s.syncCfg) {
-          await s.syncNow('pull')
+          await s.syncNow('pull') // 先拉取（合并进本机）
+          await s.syncNow('push') // 再回推（上传本机独有的数据）
         }
       } catch {
         /* 网络不佳时跳过，不影响本地使用；下次打开再试 */
