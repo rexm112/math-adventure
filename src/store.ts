@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { DifficultyMode, Grade, Question, QuestionResult, SessionSummary, WrongEntry } from './types'
-import { createSyncGist, findSyncGist, mergeProfiles, pullSync, pushSync } from './lib/sync'
+import { createSyncGist, findSyncGist, mergeSync, pullSync, pushSync, type SyncState } from './lib/sync'
 
 export interface ProfileStats {
   totalPoints: number
@@ -68,6 +68,8 @@ interface AppState {
   soundOn: boolean
   settings: AppSettings
   syncCfg: SyncCfg | null
+  /** 已删除档案的墓碑（id → 删除时间），随云同步传播，防止旧副本复活 */
+  deletedIds: Record<string, number>
   addProfile: (name: string, avatar: string, grade: Grade) => Profile
   updateProfile: (id: string, patch: Partial<Pick<Profile, 'name' | 'avatar' | 'grade' | 'difficultyMode'>>) => void
   removeProfile: (id: string) => void
@@ -124,6 +126,59 @@ function bump(updated: number): number {
   return now > updated ? now : updated + 1
 }
 
+// ---------- 同步队列与合并推送 ----------
+// 本机所有推送串行执行；推送前先拉取合并（读-改-写），推送后校验，被并发写入覆盖则重推一次
+
+let syncChain: Promise<unknown> = Promise.resolve()
+function enqueueSync<T>(fn: () => Promise<T>): Promise<T> {
+  const next = syncChain.then(fn, fn)
+  syncChain = next.catch(() => undefined)
+  return next
+}
+
+function pushMerged(get: () => AppState, set: (partial: Partial<AppState>) => void): Promise<void> {
+  return enqueueSync(async () => {
+    const cfg = get().syncCfg
+    if (!cfg) return
+    // 1. 推送前先拉取合并：绝不拿本机旧快照直接覆盖云端
+    const remote = await pullSync(cfg.token, cfg.gistId)
+    const merged = mergeSync(
+      { profiles: get().profiles, deleted: get().deletedIds },
+      { profiles: remote.profiles, deleted: remote.deleted ?? {} },
+    )
+    set({ profiles: merged.profiles, deletedIds: merged.deleted })
+    // 2. 写入合并结果
+    await pushSync(cfg.token, cfg.gistId, merged)
+    set({ syncCfg: { ...cfg, lastSync: Date.now() } })
+    // 3. 写后校验：若推送间隙被其他设备覆盖（并发窗口 ~1 秒），重合并再补推一次
+    const verify = await pullSync(cfg.token, cfg.gistId)
+    const cloudIds = new Set((verify.profiles ?? []).map((p) => p.id))
+    const lostLocally = get().profiles.some((p) => !cloudIds.has(p.id))
+    if (lostLocally) {
+      const merged2 = mergeSync(
+        { profiles: get().profiles, deleted: get().deletedIds },
+        { profiles: verify.profiles ?? [], deleted: verify.deleted ?? {} },
+      )
+      await pushSync(cfg.token, cfg.gistId, merged2)
+      set({ syncCfg: { ...(get().syncCfg ?? cfg), lastSync: Date.now() } })
+    }
+  })
+}
+
+function pullMerged(get: () => AppState, set: (partial: Partial<AppState>) => void): Promise<string> {
+  return enqueueSync(async () => {
+    const cfg = get().syncCfg
+    if (!cfg) throw new Error('请先在设置里配置云同步')
+    const remote = await pullSync(cfg.token, cfg.gistId)
+    const merged = mergeSync(
+      { profiles: get().profiles, deleted: get().deletedIds },
+      { profiles: remote.profiles, deleted: remote.deleted ?? {} },
+    )
+    set({ profiles: merged.profiles, deletedIds: merged.deleted, syncCfg: { ...cfg, lastSync: Date.now() } })
+    return `已从云端合并 ✓（共 ${merged.profiles.length} 位小勇士）`
+  })
+}
+
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -132,9 +187,19 @@ export const useStore = create<AppState>()(
       soundOn: true,
       settings: {},
       syncCfg: null,
+      deletedIds: {},
 
       addProfile: (name, avatar, grade) => {
-        const p: Profile = { id: `p${Date.now()}`, name, avatar, grade, difficultyMode: 'standard', createdAt: Date.now(), updatedAt: Date.now(), badges: [], stats: emptyStats(), wrongBook: [] }
+        // 防重复：同名档案直接复用（避免两台设备各自建档产生两个"哥哥"）
+        const trimmed = name.trim() || '小勇士'
+        const existing = get().profiles.find((p) => p.name === trimmed)
+        if (existing) {
+          if (existing.avatar !== avatar || existing.grade !== grade) {
+            get().updateProfile(existing.id, { avatar, grade })
+          }
+          return existing
+        }
+        const p: Profile = { id: `p${Date.now()}`, name: trimmed, avatar, grade, difficultyMode: 'standard', createdAt: Date.now(), updatedAt: Date.now(), badges: [], stats: emptyStats(), wrongBook: [] }
         set({ profiles: [...get().profiles, p] })
         void maybeAutoPush(get, set)
         return p
@@ -146,8 +211,13 @@ export const useStore = create<AppState>()(
       },
 
       removeProfile: (id) => {
-        const rest = get().profiles.filter((p) => p.id !== id)
-        set({ profiles: rest, activeId: get().activeId === id ? null : get().activeId })
+        // 墓碑删除：时间戳随同步传播，所有设备都会删掉且不会被旧副本复活
+        const t = Date.now()
+        set({
+          profiles: get().profiles.filter((p) => p.id !== id),
+          deletedIds: { ...get().deletedIds, [id]: t },
+          activeId: get().activeId === id ? null : get().activeId,
+        })
         void maybeAutoPush(get, set)
       },
 
@@ -230,8 +300,11 @@ export const useStore = create<AppState>()(
       },
 
       importProfiles: (incoming) => {
-        const merged = mergeProfiles(get().profiles, incoming.map((x) => normalizeProfile(x)))
-        set({ profiles: merged })
+        const merged = mergeSync(
+          { profiles: get().profiles, deleted: get().deletedIds },
+          { profiles: incoming.map((x) => normalizeProfile(x)), deleted: {} },
+        )
+        set({ profiles: merged.profiles, deletedIds: merged.deleted })
         void maybeAutoPush(get, set)
       },
 
@@ -242,18 +315,23 @@ export const useStore = create<AppState>()(
         // 先找已有的同步仓库（换设备粘同一个 token 即可接上），没有才新建
         const existing = await findSyncGist(token)
         if (existing) {
-          let merged = 0
+          let count = get().profiles.length
           try {
             const remote = await pullSync(token, existing)
-            merged = mergeProfiles(get().profiles, remote.profiles ?? []).length
-            set({ profiles: mergeProfiles(get().profiles, remote.profiles ?? []) })
+            const merged = mergeSync(
+              { profiles: get().profiles, deleted: get().deletedIds },
+              { profiles: remote.profiles, deleted: remote.deleted ?? {} },
+            )
+            set({ profiles: merged.profiles, deletedIds: merged.deleted })
+            count = merged.profiles.length
           } catch {
             /* 云端数据暂时读不到也不影响绑定 */
           }
           set({ syncCfg: { token, gistId: existing, lastSync: Date.now() } })
-          return `已连接到云端仓库 ✓（共 ${merged} 位小勇士，已合并到本机）`
+          return `已连接到云端仓库 ✓（共 ${count} 位小勇士，已合并到本机）`
         }
-        const gistId = await createSyncGist(token, get().profiles)
+        const state: SyncState = { profiles: get().profiles, deleted: get().deletedIds }
+        const gistId = await createSyncGist(token, state)
         set({ syncCfg: { token, gistId, lastSync: Date.now() } })
         return `已创建云端仓库并上传 ✓（Gist ID：${gistId.slice(0, 8)}…）`
       },
@@ -262,17 +340,20 @@ export const useStore = create<AppState>()(
         const cfg = get().syncCfg
         if (!cfg) throw new Error('请先在设置里配置云同步')
         if (dir === 'push') {
-          await pushSync(cfg.token, cfg.gistId, get().profiles)
-          set({ syncCfg: { ...cfg, lastSync: Date.now() } })
-          return '已上传云端 ✓'
+          await pushMerged(get, set)
+          return '已上传云端 ✓（推送前已自动合并，不会覆盖其他设备的数据）'
         }
-        const remote = await pullSync(cfg.token, cfg.gistId)
-        const merged = mergeProfiles(get().profiles, remote.profiles ?? [])
-        set({ profiles: merged, syncCfg: { ...cfg, lastSync: Date.now() } })
-        return `已从云端合并 ✓（共 ${merged.length} 位小勇士）`
+        return pullMerged(get, set)
       },
 
-      resetAll: () => set({ profiles: [], activeId: null }),
+      resetAll: () => {
+        // 清空所有数据 = 给全部档案立墓碑并清空本地；墓碑随同步传播到云端和其他设备
+        const t = Date.now()
+        const deletedIds = { ...get().deletedIds }
+        for (const p of get().profiles) deletedIds[p.id] = t
+        set({ profiles: [], deletedIds, activeId: null })
+        void maybeAutoPush(get, set)
+      },
     }),
     {
       name: 'math-adventure-v1',
@@ -289,13 +370,11 @@ export const useStore = create<AppState>()(
   ),
 )
 
-/** 配置过同步时，数据变化后自动上传（失败静默，下次再试） */
+/** 配置过同步时，数据变化后自动上传（串行队列 + 推送前合并，失败静默下次再试） */
 async function maybeAutoPush(get: () => AppState, set: (partial: Partial<AppState>) => void) {
-  const cfg = get().syncCfg
-  if (!cfg) return
+  if (!get().syncCfg) return
   try {
-    await pushSync(cfg.token, cfg.gistId, get().profiles)
-    set({ syncCfg: { ...cfg, lastSync: Date.now() } })
+    await pushMerged(get, set)
   } catch {
     /* 网络不佳时跳过，等下一次数据变化或手动同步 */
   }
