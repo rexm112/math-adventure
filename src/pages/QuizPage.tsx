@@ -44,6 +44,7 @@ export default function QuizPage({ profileId, grade, topicId, mode, review, onEx
   const [confirmExit, setConfirmExit] = useState(false)
   const [encourage, setEncourage] = useState('')
   const [explainQ, setExplainQ] = useState<Question | null>(null)
+  const [zoom, setZoom] = useState(false)
 
   // 权威数据放 ref，避免闭包过期
   const resultsRef = useRef<QuestionResult[]>([])
@@ -53,6 +54,7 @@ export default function QuizPage({ profileId, grade, topicId, mode, review, onEx
   const startRef = useRef(Date.now())
   const stepRef = useRef(false)
   const explainedRef = useRef(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const [display, setDisplay] = useState<{ points: number; streak: number; stars: (number | 'skip' | null)[] }>({
     points: 0,
     streak: 0,
@@ -60,7 +62,11 @@ export default function QuizPage({ profileId, grade, topicId, mode, review, onEx
   })
 
   useEffect(() => {
-    window.scrollTo({ top: explainQ ? document.body.scrollHeight : 0 })
+    // 一屏布局：滚动发生在中部内容区（题目卡+提示），输入区始终钉在底部
+    const el = scrollRef.current
+    if (!el) return
+    setZoom(false)
+    el.scrollTo({ top: explainQ ? el.scrollHeight : 0 })
   }, [idx, explainQ])
 
   const commitResult = (r: QuestionResult) => {
@@ -190,125 +196,151 @@ export default function QuizPage({ profileId, grade, topicId, mode, review, onEx
   }
 
   return (
-    <div className="app" style={{ padding: 0 }}>
-      {/* 顶栏 */}
-      <div className="quiz-top" style={{ padding: '10px 4px 0' }}>
-        <button
-          className="btn ghost"
-          style={{ padding: '6px 12px', fontSize: '0.9rem' }}
-          onClick={() => setConfirmExit(true)}
-          aria-label="退出练习"
-        >
-          ✕
-        </button>
-        <ProgressDots total={questions.length} current={idx} stars={display.stars} />
-        <span className="pill" aria-label={`得分 ${display.points}`}>
-          🏅 {display.points}
-        </span>
-        {display.streak >= 2 && (
-          <span className="pill" style={{ background: 'var(--amber-soft)', borderColor: 'var(--amber)' }}>
-            🔥×{display.streak}
-          </span>
-        )}
-      </div>
-
-      {/* 题目卡 */}
-      <div className={`card q-card ${feedback === 'no' ? 'shake' : ''}`} key={q.id}>
-        <div className="q-meta">
-          <DiffChip d={q.difficulty} />
-          <span className="pill" style={{ fontSize: '0.8rem' }}>
-            {q.no}/{questions.length} · {isReview ? '错题重练' : q.topicName}
-          </span>
+    <div className="app quiz-screen">
+      {/* 中部可滚动区：顶栏 + 题目卡 + 提示 + 反馈 */}
+      <div className="quiz-scroll" ref={scrollRef}>
+        <div className="quiz-top" style={{ padding: '10px 4px 0' }}>
           <button
             className="btn ghost"
-            style={{ marginLeft: 'auto', padding: '5px 10px', fontSize: '0.85rem' }}
-            onClick={() => speak(q.prompt)}
-            aria-label="朗读题目"
-            type="button"
+            style={{ padding: '6px 12px', fontSize: '0.9rem' }}
+            onClick={() => setConfirmExit(true)}
+            aria-label="退出练习"
           >
-            🔊
+            ✕
           </button>
+          <ProgressDots total={questions.length} current={idx} stars={display.stars} />
+          <span className="pill" aria-label={`得分 ${display.points}`}>
+            🏅 {display.points}
+          </span>
+          {display.streak >= 2 && (
+            <span className="pill" style={{ background: 'var(--amber-soft)', borderColor: 'var(--amber)' }}>
+              🔥×{display.streak}
+            </span>
+          )}
         </div>
-        {q.figure && (
-          <div className="fig-wrap">
-            <Figure spec={q.figure} />
-          </div>
-        )}
-        <div className="q-prompt">{q.prompt}</div>
-      </div>
 
-      {/* 提示区：答错自动逐条出现，永不透露最终答案 */}
-      <div className="hints">
-        {hintsShown === 0 ? (
-          <div className="hint-row">
-            <span className="owl">🦉</span>
-            <div>
-              <button className="hint-ask" onClick={revealHint} type="button">
-                💡 需要一点提示（会少得一点分）
-              </button>
-            </div>
+        {/* 题目卡 */}
+        <div className={`card q-card ${feedback === 'no' ? 'shake' : ''}`} key={q.id}>
+          <div className="q-meta">
+            <DiffChip d={q.difficulty} />
+            <span className="pill" style={{ fontSize: '0.8rem' }}>
+              {q.no}/{questions.length} · {isReview ? '错题重练' : q.topicName}
+            </span>
+            <button
+              className="btn ghost"
+              style={{ marginLeft: 'auto', padding: '5px 10px', fontSize: '0.85rem' }}
+              onClick={() => speak(q.prompt)}
+              aria-label="朗读题目"
+              type="button"
+            >
+              🔊
+            </button>
           </div>
-        ) : (
-          Array.from({ length: hintsShown }, (_, i) => (
-            <div className="hint-row" key={i}>
-              <span className="owl">{i === 0 ? '🦉' : ''}</span>
-              <div className="hint-bubble">
-                <span className="h-no">提示 {i + 1}</span>
-                {q.hints[i]}
+          {q.figure && (
+            <div
+              className="fig-wrap"
+              role="button"
+              tabIndex={0}
+              aria-label="放大题图"
+              onClick={() => setZoom(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') setZoom(true)
+              }}
+            >
+              <Figure spec={q.figure} />
+              <span className="fig-zoom" aria-hidden>
+                🔍 放大
+              </span>
+            </div>
+          )}
+          <div className="q-prompt">{q.prompt}</div>
+        </div>
+
+        {/* 提示区：答错自动逐条出现，永不透露最终答案 */}
+        <div className="hints">
+          {hintsShown === 0 ? (
+            <div className="hint-row">
+              <span className="owl">🦉</span>
+              <div>
+                <button className="hint-ask" onClick={revealHint} type="button">
+                  💡 需要一点提示（会少得一点分）
+                </button>
               </div>
             </div>
-          ))
-        )}
-        {hintsShown > 0 && hintsShown < q.hints.length && (
-          <div className="hint-row">
-            <span className="owl"></span>
-            <button className="hint-ask" onClick={revealHint} type="button">
-              💡 再要一条提示
-            </button>
-          </div>
-        )}
-        {skippable && feedback !== 'ok' && (
-          <div className="hint-row">
-            <span className="owl">🦉</span>
-            <div className="hint-bubble" style={{ borderColor: 'var(--red)', background: 'var(--red-soft)', color: '#7f1d1d' }}>
-              这道题有点难！可以先跳过它（不扣分也不给答案），练完这一局再回来挑战。
+          ) : (
+            Array.from({ length: hintsShown }, (_, i) => (
+              <div className="hint-row" key={i}>
+                <span className="owl">{i === 0 ? '🦉' : ''}</span>
+                <div className="hint-bubble">
+                  <span className="h-no">提示 {i + 1}</span>
+                  {q.hints[i]}
+                </div>
+              </div>
+            ))
+          )}
+          {hintsShown > 0 && hintsShown < q.hints.length && (
+            <div className="hint-row">
+              <span className="owl"></span>
+              <button className="hint-ask" onClick={revealHint} type="button">
+                💡 再要一条提示
+              </button>
             </div>
-            <button className="btn ghost" style={{ fontSize: '0.85rem', padding: '8px 12px' }} onClick={skip} type="button">
-              先跳过
-            </button>
+          )}
+          {skippable && feedback !== 'ok' && (
+            <div className="hint-row">
+              <span className="owl">🦉</span>
+              <div className="hint-bubble" style={{ borderColor: 'var(--red)', background: 'var(--red-soft)', color: '#7f1d1d' }}>
+                这道题有点难！可以先跳过它（不扣分也不给答案），练完这一局再回来挑战。
+              </div>
+              <button className="btn ghost" style={{ fontSize: '0.85rem', padding: '8px 12px' }} onClick={skip} type="button">
+                先跳过
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 反馈条 */}
+        {feedback === 'ok' && (
+          <div className="feedback-bar feedback-ok" role="status">
+            {CHEERS[idx % CHEERS.length]} +{earnedNow?.points} 分
+            {earnedNow?.bonus ? `（含连对奖励 +${earnedNow.bonus}）` : ''}
           </div>
+        )}
+        {feedback === 'no' && (
+          <div className="feedback-bar feedback-no" role="alert">
+            {encourage}
+          </div>
+        )}
+
+        {/* 错题重练：答对后讲思路 */}
+        {explainQ && (
+          <VoiceExplain
+            q={explainQ}
+            onDone={(passed) => {
+              markExplained(profileId, explainQ.prompt, passed)
+              explainedRef.current = true
+              realAdvance()
+            }}
+          />
         )}
       </div>
 
-      {/* 反馈条 */}
-      {feedback === 'ok' && (
-        <div className="feedback-bar feedback-ok" role="status">
-          {CHEERS[idx % CHEERS.length]} +{earnedNow?.points} 分
-          {earnedNow?.bonus ? `（含连对奖励 +${earnedNow.bonus}）` : ''}
-        </div>
-      )}
-      {feedback === 'no' && (
-        <div className="feedback-bar feedback-no" role="alert">
-          {encourage}
-        </div>
-      )}
-
-      {/* 错题重练：答对后讲思路 */}
-      {explainQ && (
-        <VoiceExplain
-          q={explainQ}
-          onDone={(passed) => {
-            markExplained(profileId, explainQ.prompt, passed)
-            explainedRef.current = true
-            realAdvance()
-          }}
-        />
-      )}
-
-      {/* 输入区（讲解时隐藏） */}
+      {/* 输入区：固定在底部，无需下滑（讲解时隐藏） */}
       {!explainQ && (
         <div className="answer-zone">
           <AnswerPad key={q.id} q={q} onSubmit={submit} disabled={feedback === 'ok'} soundOn={soundOn} />
+        </div>
+      )}
+
+      {/* 题图放大 */}
+      {zoom && q.figure && (
+        <div className="fig-overlay" role="dialog" aria-modal="true" aria-label="题图放大视图" onClick={() => setZoom(false)}>
+          <div className="card" onClick={(e) => e.stopPropagation()}>
+            <Figure spec={q.figure} />
+            <button className="btn ghost" style={{ width: '100%', marginTop: 10 }} onClick={() => setZoom(false)} type="button">
+              关闭放大
+            </button>
+          </div>
         </div>
       )}
 

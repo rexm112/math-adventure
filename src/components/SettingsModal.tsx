@@ -88,8 +88,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           style={{ marginTop: 8 }}
         />
         <input type="text" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="模型（默认 glm-4-flash；Coding Plan 可用 glm-4.6 等）" style={{ marginTop: 8 }} />
-        <div className="row" style={{ marginTop: 8 }}>
-          <button className="btn" style={{ flex: 1 }} onClick={saveAI}>
+        <div className="btn-grid" style={{ marginTop: 8 }}>
+          <button className="btn" onClick={saveAI}>
             保存本机 AI 设置
           </button>
           <button className="btn ghost" onClick={() => setSettings({ tts: settings.tts === false ? true : false })}>
@@ -113,14 +113,14 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             <p className="muted" style={{ margin: '0 0 8px' }}>
               已连接云端仓库，最后同步：{new Date(syncCfg.lastSync).toLocaleString('zh-CN')}
             </p>
-            <div className="row">
-              <button className="btn" style={{ flex: 1 }} disabled={busy} onClick={() => doSync('push')}>
+            <div className="btn-grid">
+              <button className="btn" disabled={busy} onClick={() => doSync('push')}>
                 ⬆️ 上传
               </button>
-              <button className="btn ghost" style={{ flex: 1 }} disabled={busy} onClick={() => doSync('pull')}>
+              <button className="btn ghost" disabled={busy} onClick={() => doSync('pull')}>
                 ⬇️ 下载合并
               </button>
-              <button className="btn ghost" style={{ flex: 1 }} onClick={() => { setSyncCfg(null); setMsg('已断开本机云同步（项目级配置会在下次打开时自动重连）') }}>
+              <button className="btn ghost" onClick={() => { setSyncCfg(null); setMsg('已断开本机云同步（项目级配置会在下次打开时自动重连）') }}>
                 断开
               </button>
             </div>
@@ -147,11 +147,11 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
       <div className="field">
         <label>💾 备份 / 恢复</label>
-        <div className="row">
-          <button className="btn ghost" style={{ flex: 1 }} onClick={exportData}>
+        <div className="btn-grid">
+          <button className="btn ghost" onClick={exportData}>
             导出 JSON 文件
           </button>
-          <button className="btn ghost" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>
+          <button className="btn ghost" onClick={() => fileRef.current?.click()}>
             导入文件
           </button>
           <input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importData(e.target.files[0])} />
