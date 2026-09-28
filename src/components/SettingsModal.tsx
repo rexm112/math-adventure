@@ -20,13 +20,13 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const doSetup = async () => {
     if (!token.trim()) return
     setBusy(true)
-    setMsg('正在创建云端数据仓库…')
+    setMsg('正在连接云端…')
     try {
-      await setupSync(token.trim())
+      const message = await setupSync(token.trim())
       setToken('')
-      setMsg('云同步已开通 ✓ 换设备时粘贴同一个 token 即可')
+      setMsg(message)
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : '创建失败')
+      setMsg(e instanceof Error ? e.message : '连接失败')
     } finally {
       setBusy(false)
     }
@@ -112,13 +112,14 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <>
-            <input type="text" value={token} onChange={(e) => setToken(e.target.value)} placeholder="粘贴 GitHub Token（仅 gist 读写权限）" />
+            <input type="text" value={token} onChange={(e) => setToken(e.target.value)} placeholder="粘贴 GitHub Token（需要 gist 读写权限）" />
             <button className="btn" style={{ marginTop: 8, width: '100%' }} disabled={busy || !token.trim()} onClick={doSetup}>
-              开通云同步（创建私密 Gist）
+              连接云同步
             </button>
             <p className="muted" style={{ fontSize: '0.8rem' }}>
-              github.com → Settings → Developer settings → Fine-grained tokens → 新建，Account permissions 里只勾「Gists: Read and write」。
-              数据存放在你账号的私密 Gist 里，其他人不可见。
+              已有仓库会自动识别并合并（换设备粘同一个 token 即可）；第一次使用会自动创建一个私密 Gist 存放数据。
+              <br />
+              Token 要求：经典 token 勾选 <b>gist</b> 权限，或 Fine-grained token 在 Account permissions 里勾「Gists: Read and write」。Token 只保存在这台设备的浏览器里。
             </p>
           </>
         )}

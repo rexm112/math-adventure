@@ -18,6 +18,14 @@ function headers(token: string) {
   return { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }
 }
 
+export async function findSyncGist(token: string): Promise<string | null> {
+  const res = await fetch(`${API}/gists?per_page=100`, { headers: headers(token) })
+  if (!res.ok) throw new Error(`无法读取 Gist 列表（${res.status}）：请检查 token 是否包含 gist 读写权限`)
+  const list = (await res.json()) as { id: string; description?: string }[]
+  const hit = list.find((g) => g.description?.includes('数学大冒险'))
+  return hit?.id ?? null
+}
+
 export async function createSyncGist(token: string, profiles: Profile[]): Promise<string> {
   const payload: SyncPayload = { v: 1, savedAt: Date.now(), profiles }
   const res = await fetch(`${API}/gists`, {

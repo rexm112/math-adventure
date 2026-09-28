@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { DifficultyMode, Grade, Question, QuestionResult, SessionSummary, WrongEntry } from './types'
-import { createSyncGist, mergeProfiles, pullSync, pushSync } from './lib/sync'
+import { createSyncGist, findSyncGist, mergeProfiles, pullSync, pushSync } from './lib/sync'
 
 export interface ProfileStats {
   totalPoints: number
@@ -237,9 +237,23 @@ export const useStore = create<AppState>()(
       setSyncCfg: (cfg) => set({ syncCfg: cfg }),
 
       setupSync: async (token) => {
+        // 先找已有的同步仓库（换设备粘同一个 token 即可接上），没有才新建
+        const existing = await findSyncGist(token)
+        if (existing) {
+          let merged = 0
+          try {
+            const remote = await pullSync(token, existing)
+            merged = mergeProfiles(get().profiles, remote.profiles ?? []).length
+            set({ profiles: mergeProfiles(get().profiles, remote.profiles ?? []) })
+          } catch {
+            /* 云端数据暂时读不到也不影响绑定 */
+          }
+          set({ syncCfg: { token, gistId: existing, lastSync: Date.now() } })
+          return `已连接到云端仓库 ✓（共 ${merged} 位小勇士，已合并到本机）`
+        }
         const gistId = await createSyncGist(token, get().profiles)
         set({ syncCfg: { token, gistId, lastSync: Date.now() } })
-        return gistId
+        return `已创建云端仓库并上传 ✓（Gist ID：${gistId.slice(0, 8)}…）`
       },
 
       syncNow: async (dir) => {
