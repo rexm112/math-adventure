@@ -21,19 +21,49 @@ export function ttsSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
 
-/** 朗读一段中文文本；正在朗读时会先停止 */
-export function speak(text: string, opts: { rate?: number } = {}) {
-  if (!ttsSupported()) return
+let currentUtterance: SpeechSynthesisUtterance | null = null
+
+/**
+ * 朗读一段中文文本；正在朗读时会先停止。
+ * onFail：约 0.7s 内语音没有真正开始播放时回调（手机静音键、媒体音量为 0、
+ * 微信/QQ 内置浏览器缺 TTS 引擎、iOS cancel 竞态等都表现为"静默无声"）。
+ */
+export function speak(text: string, opts: { rate?: number; onFail?: () => void } = {}) {
+  if (!ttsSupported()) {
+    opts.onFail?.()
+    return
+  }
+  const synth = window.speechSynthesis
   try {
-    window.speechSynthesis.cancel()
-    const u = new SpeechSynthesisUtterance(text)
-    const v = pickChineseVoice()
-    if (v) u.voice = v
-    u.lang = v?.lang ?? 'zh-CN'
-    u.rate = opts.rate ?? 0.95
-    window.speechSynthesis.speak(u)
+    const start = () => {
+      const u = new SpeechSynthesisUtterance(text)
+      const v = pickChineseVoice()
+      if (v) u.voice = v
+      u.lang = v?.lang ?? 'zh-CN'
+      u.rate = opts.rate ?? 0.95
+      // 持有引用，防止移动端浏览器把 utterance 提前回收导致中途无声
+      currentUtterance = u
+      let started = false
+      u.onstart = () => {
+        started = true
+      }
+      if (opts.onFail) {
+        window.setTimeout(() => {
+          if (!started && !synth.speaking) opts.onFail?.()
+        }, 700)
+      }
+      synth.speak(u)
+    }
+    if (synth.speaking || synth.pending) {
+      // iOS 上 cancel 与 speak 同帧调用会吞掉新语音：先停，下一拍再播
+      synth.cancel()
+      window.setTimeout(start, 60)
+    } else {
+      start()
+    }
   } catch {
     /* 忽略：个别浏览器在后台标签页会抛错 */
+    opts.onFail?.()
   }
 }
 

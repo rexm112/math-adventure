@@ -775,6 +775,13 @@ body {
   animation: shake 0.4s ease;
 }
 
+.tts-tip {
+  background: var(--amber-soft);
+  color: #92400e;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
 .shake {
   animation: shake 0.4s ease;
 }

@@ -45,6 +45,23 @@ export default function QuizPage({ profileId, grade, topicId, mode, review, onEx
   const [encourage, setEncourage] = useState('')
   const [explainQ, setExplainQ] = useState<Question | null>(null)
   const [zoom, setZoom] = useState(false)
+  const [ttsTip, setTtsTip] = useState(false)
+
+  /** 点朗读：无声时（静音键/音量/微信内核）给出可操作的提示 */
+  const readAloud = () => {
+    const inWeChat = /MicroMessenger|QQ\//i.test(navigator.userAgent)
+    speak(q.prompt, {
+      onFail: () => {
+        setTtsTip(true)
+        window.setTimeout(() => setTtsTip(false), 8000)
+      },
+    })
+    if (inWeChat) {
+      // 微信/QQ 内置内核大多没有语音引擎，主动提示
+      setTtsTip(true)
+      window.setTimeout(() => setTtsTip(false), 8000)
+    }
+  }
 
   // 权威数据放 ref，避免闭包过期
   const resultsRef = useRef<QuestionResult[]>([])
@@ -229,7 +246,7 @@ export default function QuizPage({ profileId, grade, topicId, mode, review, onEx
             <button
               className="btn ghost"
               style={{ marginLeft: 'auto', padding: '5px 10px', fontSize: '0.85rem' }}
-              onClick={() => speak(q.prompt)}
+              onClick={readAloud}
               aria-label="朗读题目"
               type="button"
             >
@@ -309,6 +326,13 @@ export default function QuizPage({ profileId, grade, topicId, mode, review, onEx
         {feedback === 'no' && (
           <div className="feedback-bar feedback-no" role="alert">
             {encourage}
+          </div>
+        )}
+
+        {/* 朗读无声提示 */}
+        {ttsTip && (
+          <div className="feedback-bar tts-tip" role="alert">
+            🔈 没听到声音？请检查手机<strong>静音键</strong>和<strong>媒体音量</strong>；若在微信里打开，请复制链接用 Safari / Chrome 打开后朗读。
           </div>
         )}
 
